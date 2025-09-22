@@ -14,8 +14,6 @@ which is included as part of this source code package.
 #include <rclcpp/rclcpp.hpp>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/passthrough.h>
-#include <pcl/point_types.h>
-#include <pcl/io/pcd_io.h>
 #include "common_lib.h"
 
 class LidarDetect
@@ -64,6 +62,7 @@ public:
         center_pub_ = node->create_publisher<sensor_msgs::msg::PointCloud2>("center_cloud", 10);
     }
 
+
     void detect_lidar(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr center_cloud)
     {
         // 1. X、Y、Z方向滤波
@@ -104,7 +103,7 @@ public:
         pcl::SACSegmentation<pcl::PointXYZ> plane_segmentation;
         plane_segmentation.setModelType(pcl::SACMODEL_PLANE);
         plane_segmentation.setMethodType(pcl::SAC_RANSAC);
-        plane_segmentation.setDistanceThreshold(0.05);  // 平面分割阈值
+        plane_segmentation.setDistanceThreshold(0.03);  // 平面分割阈值
         plane_segmentation.setInputCloud(filtered_cloud_);
         plane_segmentation.segment(*plane_inliers, *plane_coefficients);
     
@@ -178,32 +177,6 @@ public:
         ec.setInputCloud(edge_cloud_);
         ec.extract(cluster_indices);
     
-        pcl::PointCloud<pcl::PointXYZRGB>::Ptr colored_cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-        pcl::PointCloud<pcl::PointXYZRGB>::Ptr colored_clusters(new pcl::PointCloud<pcl::PointXYZRGB>);
-        
-        // 将原始边缘点云转换为彩色点云（灰色）
-        for (const auto& point : edge_cloud_->points) {
-            pcl::PointXYZRGB colored_point;
-            colored_point.x = point.x;
-            colored_point.y = point.y;
-            colored_point.z = point.z;
-            colored_point.r = 128;
-            colored_point.g = 128;
-            colored_point.b = 128;
-            colored_cloud->push_back(colored_point);
-        }
-        
-        // 定义颜色数组
-        std::vector<std::array<uint8_t, 3>> colors = {
-            {255, 0, 0},    // 红色 - Cluster 0
-            {0, 255, 0},    // 绿色 - Cluster 1
-            {0, 0, 255},    // 蓝色 - Cluster 2
-            {255, 255, 0},  // 黄色 - Cluster 3
-            {255, 0, 255},  // 紫色 - Cluster 4
-            {0, 255, 255},  // 青色 - Cluster 5
-            {255, 128, 0},  // 橙色 - Cluster 6
-            {128, 255, 0}   // 浅绿色 - Cluster 7
-        };
         RCLCPP_INFO(node_->get_logger(), "Number of edge clusters: %ld", cluster_indices.size());
     
         // 6. 对每个聚类进行圆拟合
@@ -219,19 +192,6 @@ public:
             }
     
             RCLCPP_INFO(node_->get_logger(), "Cluster %ld: %ld points", i, cluster->size());
-            
-            // 为每个聚类添加彩色点
-            auto color = colors[i % colors.size()];
-            for (const auto& idx : cluster_indices[i].indices) {
-                pcl::PointXYZRGB colored_point;
-                colored_point.x = edge_cloud_->points[idx].x;
-                colored_point.y = edge_cloud_->points[idx].y;
-                colored_point.z = edge_cloud_->points[idx].z;
-                colored_point.r = color[0];
-                colored_point.g = color[1];
-                colored_point.b = color[2];
-                colored_clusters->push_back(colored_point);
-            }
     
             // 圆拟合
             pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
@@ -289,17 +249,6 @@ public:
                     
                     RCLCPP_INFO(node_->get_logger(), "Added circle center: (%.3f, %.3f, %.3f)", 
                                center_point_origin.x, center_point_origin.y, center_point_origin.z);
-                    // 为接受的圆心添加特殊标记（白色大点）
-                    for (int j = 0; j < 5; ++j) {  // 添加5个点形成较大的标记
-                        pcl::PointXYZRGB center_marker;
-                        center_marker.x = center_point_origin.x + (j-2) * 0.01;
-                        center_marker.y = center_point_origin.y;
-                        center_marker.z = center_point_origin.z;
-                        center_marker.r = 255;
-                        center_marker.g = 255;
-                        center_marker.b = 255;
-                        colored_clusters->push_back(center_marker);
-                    }
                 }
                 else 
                 {
@@ -353,14 +302,7 @@ public:
             center_cloud->is_dense = true;
             pcl::io::savePCDFileASCII(debug_dir + "06_detected_centers.pcd", *center_cloud);
         }
-        // 保存彩色点云
-        if (colored_clusters->size() > 0) {
-            colored_clusters->width = colored_clusters->size();
-            colored_clusters->height = 1;
-            colored_clusters->is_dense = true;
-            pcl::io::savePCDFileASCII(debug_dir + "07_colored_clusters.pcd", *colored_clusters);
-            RCLCPP_INFO(node_->get_logger(), "Saved colored clusters to: %s07_colored_clusters.pcd", debug_dir.c_str());
-        }
+        
         // 保存每个聚类的点云用于详细分析
         for (size_t i = 0; i < cluster_indices.size(); ++i) 
         {

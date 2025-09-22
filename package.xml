@@ -28,6 +28,7 @@
   <depend>pcl_ros</depend>
   <depend>rosbag2_cpp</depend>
   <depend>rosbag2_storage</depend>
+  <depend>livox_ros_driver</depend>
   
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

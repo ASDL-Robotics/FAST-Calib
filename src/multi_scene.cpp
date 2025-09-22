@@ -115,11 +115,21 @@ int main(int argc, char** argv)
     // 读取参数
     Params params = loadParameters(node);
     
+    // 添加调试信息
+    RCLCPP_INFO(node->get_logger(), "Raw output_path: '%s'", params.output_path.c_str());
+    
+    if (params.output_path.empty()) {
+        RCLCPP_ERROR(node->get_logger(), "output_path parameter is empty! Please check your parameter file.");
+        return 1;
+    }
+    
     if (params.output_path.back() != '/') params.output_path += '/';
     std::string midtxt_path = params.output_path + "circle_center_record.txt";
-
-    if (params.output_path.back() != '/') params.output_path += '/';
     std::string multi_output_path = params.output_path + "multi_calib_result.txt";
+    
+    // 添加调试信息
+    RCLCPP_INFO(node->get_logger(), "Final output_path: '%s'", params.output_path.c_str());
+    RCLCPP_INFO(node->get_logger(), "Looking for file: '%s'", midtxt_path.c_str());
 
     // 读取全部行
     std::ifstream fin(midtxt_path);

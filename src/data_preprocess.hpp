@@ -91,8 +91,8 @@ private:
                 }
                 
                 message_count++;
-                RCLCPP_INFO(rclcpp::get_logger("data_preprocess"), "Processing message %d from topic %s", 
-                           message_count, bag_message->topic_name.c_str());
+                // RCLCPP_INFO(rclcpp::get_logger("data_preprocess"), "Processing message %d from topic %s", 
+                        //    message_count, bag_message->topic_name.c_str());
                 
                 // 根据实际消息类型处理
                 if (message_type == "livox_ros_driver/msg/CustomMsg") {
@@ -102,7 +102,7 @@ private:
                     rclcpp::SerializedMessage serialized_msg(*bag_message->serialized_data);
                     serialization.deserialize_message(&serialized_msg, livox_msg.get());
                     
-                    RCLCPP_INFO(rclcpp::get_logger("data_preprocess"), "Livox message contains %d points", livox_msg->point_num);
+                    // RCLCPP_INFO(rclcpp::get_logger("data_preprocess"), "Livox message contains %d points", livox_msg->point_num);
                     
                     cloud_input_->reserve(cloud_input_->size() + livox_msg->point_num);
                     for (uint i = 0; i < livox_msg->point_num; ++i) {
@@ -119,20 +119,20 @@ private:
                     rclcpp::SerializedMessage serialized_msg(*bag_message->serialized_data);
                     serialization.deserialize_message(&serialized_msg, pcl_msg.get());
                     
-                    RCLCPP_INFO(rclcpp::get_logger("data_preprocess"), "PointCloud2 message: width=%d, height=%d", 
-                               pcl_msg->width, pcl_msg->height);
+                    // RCLCPP_INFO(rclcpp::get_logger("data_preprocess"), "PointCloud2 message: width=%d, height=%d", 
+                            //    pcl_msg->width, pcl_msg->height);
                     
                     pcl::PointCloud<pcl::PointXYZ> temp_cloud;
                     pcl::fromROSMsg(*pcl_msg, temp_cloud);
                     *cloud_input_ += temp_cloud;
                     
-                    RCLCPP_INFO(rclcpp::get_logger("data_preprocess"), "Added %ld points, total: %ld", 
-                               temp_cloud.size(), cloud_input_->size());
+                    // RCLCPP_INFO(rclcpp::get_logger("data_preprocess"), "Added %ld points, total: %ld", 
+                            //    temp_cloud.size(), cloud_input_->size());
                 }
             }
             
-            RCLCPP_INFO(rclcpp::get_logger("data_preprocess"), "Loaded %ld points from %d messages in the rosbag.", 
-                       cloud_input_->size(), message_count);
+            // RCLCPP_INFO(rclcpp::get_logger("data_preprocess"), "Loaded %ld points from %d messages in the rosbag.", 
+                    //    cloud_input_->size(), message_count);
                        
             // 保存原始点云用于调试
             std::string debug_path = "debug_original_cloud.pcd";
