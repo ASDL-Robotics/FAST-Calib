@@ -30,7 +30,7 @@ int main(int argc, char **argv)
 
     // Read image and point cloud
     cv::Mat img_input = dataPreprocessPtr->img_input_;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_input = dataPreprocessPtr->cloud_input_;
+    pcl::PointCloud<Common::Point>::Ptr cloud_input = dataPreprocessPtr->cloud_input_;
     
     // Detect QR codes
     pcl::PointCloud<pcl::PointXYZ>::Ptr qr_center_cloud(new pcl::PointCloud<pcl::PointXYZ>);
@@ -40,13 +40,32 @@ int main(int argc, char **argv)
     // Detect LiDAR data
     pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_center_cloud(new pcl::PointCloud<pcl::PointXYZ>);
     lidar_center_cloud->reserve(4);
-    lidarDetectPtr->detect_lidar(cloud_input, lidar_center_cloud);
+    
+    switch (dataPreprocessPtr->lidar_type_)
+    {
+        case LiDARType::Solid:
+            lidarDetectPtr->detect_solid_lidar(cloud_input, lidar_center_cloud);
+            break;
+
+        case LiDARType::Mech:
+            lidarDetectPtr->detect_mech_lidar(cloud_input, lidar_center_cloud);
+            break;
+
+        default:
+            std::cerr << BOLDYELLOW 
+                    << "[Main] Unknown LiDAR type." 
+                    << RESET << std::endl;
+            break;
+    }
 
     // Sort detected circle centers from QR and LiDAR
     pcl::PointCloud<pcl::PointXYZ>::Ptr qr_centers(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_centers(new pcl::PointCloud<pcl::PointXYZ>);
     sortPatternCenters(qr_center_cloud, qr_centers, "camera");
     sortPatternCenters(lidar_center_cloud, lidar_centers, "lidar");
+
+    // Save intermediate results: sorted LiDAR and QR circle centers
+    saveTargetHoleCenters(lidar_centers, qr_centers, params);
 
     // Calculate extrinsic parameters
     Eigen::Matrix4f transformation;
@@ -65,7 +84,7 @@ int main(int argc, char **argv)
       << rmse << " m" << RESET << std::endl;
     }
 
-    std::cout << BOLDYELLOW << "[Result] Extrinsic parameters T_cam_lidar: " << RESET << std::endl;
+    std::cout << BOLDYELLOW << "[Result] Single-scene calibration: extrinsic parameters T_cam_lidar = " << RESET << std::endl;
     std::cout << BOLDCYAN << std::fixed << std::setprecision(6) << transformation << RESET << std::endl;
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr colored_cloud(new pcl::PointCloud<pcl::PointXYZRGB>);

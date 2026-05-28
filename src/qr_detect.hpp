@@ -12,7 +12,6 @@ which is included as part of this source code package.
 #include <image_geometry/pinhole_camera_model.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <opencv2/aruco.hpp>
-#include <opencv2/opencv.hpp>
 #include "common_lib.h"
 
 class QRDetect 

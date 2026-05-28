@@ -8,7 +8,7 @@ which is included as part of this source code package.
 #ifndef DATA_PREPROCESS_HPP
 #define DATA_PREPROCESS_HPP
 
-#include "CustomMsg.h"  // Uncomment this line
+#include "CustomMsg.h"
 #include <Eigen/Core>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_cloud.h>
@@ -20,25 +20,36 @@ which is included as part of this source code package.
 #include <rosbag2_storage/storage_options.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <rclcpp/serialization.hpp>
+#include <fstream>
+#include "common_lib.h"
 
 using namespace std;
-using namespace cv;
+
+enum class LiDARType : int {
+    Unknown = 0,
+    Solid   = 1,   // Solid-state (e.g. Livox)
+    Mech    = 2    // Mechanical multi-line
+};
 
 class DataPreprocess
 {
 public:
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_input_;
+    // Point cloud with ring field for mechanical LiDAR support
+    pcl::PointCloud<Common::Point>::Ptr cloud_input_;
     cv::Mat img_input_;
+    LiDARType lidar_type_{LiDARType::Unknown};
+    LiDARType lidarType() const { return lidar_type_; }
 
     DataPreprocess(Params &params)
-        : cloud_input_(new pcl::PointCloud<pcl::PointXYZ>)
+        : cloud_input_(new pcl::PointCloud<Common::Point>)
     {
-        string bag_path = params.bag_path;
-        string image_path = params.image_path;
+        string bag_path    = params.bag_path;
+        string image_path  = params.image_path;
         string lidar_topic = params.lidar_topic;
 
-        img_input_ = cv::imread(params.image_path, cv::IMREAD_UNCHANGED);
-        if (img_input_.empty()) 
+        // Load image
+        img_input_ = cv::imread(image_path, cv::IMREAD_UNCHANGED);
+        if (img_input_.empty())
         {
             std::string msg = "Loading the image " + image_path + " failed";
             RCLCPP_ERROR(rclcpp::get_logger("data_preprocess"), "%s", msg.c_str());
@@ -48,7 +59,7 @@ public:
         // Check if bag file exists
         std::fstream file_;
         file_.open(bag_path, ios::in);
-        if (!file_) 
+        if (!file_)
         {
             std::string msg = "Loading the rosbag " + bag_path + " failed";
             RCLCPP_ERROR(rclcpp::get_logger("data_preprocess"), "%s", msg.c_str());
@@ -75,7 +86,7 @@ public:
             return;
         }
 
-        // Check available topics and their types
+        // Discover available topics and their types
         auto topics = reader.get_all_topics_and_types();
         bool topic_found = false;
         std::string actual_topic_type;
@@ -102,14 +113,6 @@ public:
                    "Found topic %s with type: %s", 
                    lidar_topic.c_str(), actual_topic_type.c_str());
 
-        //  Not only point cloud2
-        // if (actual_topic_type != "sensor_msgs/msg/PointCloud2") {
-        //     RCLCPP_ERROR(rclcpp::get_logger("data_preprocess"), 
-        //                 "Expected sensor_msgs/msg/PointCloud2, but found: %s", 
-        //                 actual_topic_type.c_str());
-        //     return;
-        // }
-        
         // Set topic filter
         rosbag2_storage::StorageFilter filter;
         filter.topics.push_back(lidar_topic);
@@ -120,7 +123,7 @@ public:
         if (actual_topic_type == "sensor_msgs/msg/PointCloud2") {
             RCLCPP_INFO(rclcpp::get_logger("data_preprocess"), 
                        "Processing standard PointCloud2 messages...");
-            // Handle standard PointCloud2 format
+
             rclcpp::Serialization<sensor_msgs::msg::PointCloud2> pcl_serialization;
             
             while (reader.has_next()) {
@@ -131,10 +134,37 @@ public:
                         rclcpp::SerializedMessage serialized_msg(*bag_message->serialized_data);
                         sensor_msgs::msg::PointCloud2 pcl_msg;
                         pcl_serialization.deserialize_message(&serialized_msg, &pcl_msg);
-                        
-                        pcl::PointCloud<pcl::PointXYZ> temp_cloud;
-                        pcl::fromROSMsg(pcl_msg, temp_cloud);
-                        *cloud_input_ += temp_cloud;
+
+                        // Check for ring field to determine LiDAR type
+                        bool has_ring = false;
+                        for (const auto& f : pcl_msg.fields) {
+                            if (f.name == "ring") { has_ring = true; break; }
+                        }
+
+                        if (message_count == 0) {
+                            lidar_type_ = has_ring ? LiDARType::Mech : LiDARType::Solid;
+                        }
+
+                        // Convert to Common::Point preserving ring if available
+                        for (size_t i = 0; i < pcl_msg.width * pcl_msg.height; ++i) {
+                            Common::Point p;
+                            // Use pcl_conversions for field extraction
+                            sensor_msgs::PointCloud2ConstIterator<float> it_x(pcl_msg, "x");
+                            sensor_msgs::PointCloud2ConstIterator<float> it_y(pcl_msg, "y");
+                            sensor_msgs::PointCloud2ConstIterator<float> it_z(pcl_msg, "z");
+                            it_x += i; it_y += i; it_z += i;
+                            p.x = *it_x;
+                            p.y = *it_y;
+                            p.z = *it_z;
+                            if (has_ring) {
+                                sensor_msgs::PointCloud2ConstIterator<uint16_t> it_ring(pcl_msg, "ring");
+                                it_ring += i;
+                                p.ring = *it_ring;
+                            } else {
+                                p.ring = 0xFFFF;
+                            }
+                            cloud_input_->push_back(p);
+                        }
                         message_count++;
                         
                         if (message_count % 10 == 0) {
@@ -152,26 +182,29 @@ public:
         } else if (actual_topic_type == "livox_ros_driver2/msg/CustomMsg") {
             RCLCPP_INFO(rclcpp::get_logger("data_preprocess"), 
                        "Processing Livox CustomMsg messages...");
-            
+            lidar_type_ = LiDARType::Solid;
+
+            rclcpp::Serialization<livox_ros_driver2::msg::CustomMsg> livox_serialization;
+
             while (reader.has_next()) {
                 auto bag_message = reader.read_next();
-                
+
                 if (bag_message->topic_name == lidar_topic) {
                     try {
-                        // Access the raw serialized data
-                        const auto& serialized_data = bag_message->serialized_data;
-                        
-                        // For now, let's try to convert this to a standard PointCloud2
-                        // This is a workaround - you might need to adjust based on your actual data
-                        
-                        // Skip this message for now and log that we found it
-                        message_count++;
-                        
-                        if (message_count % 10 == 0) {
-                            RCLCPP_INFO(rclcpp::get_logger("data_preprocess"), 
-                                       "Found %d CustomMsg messages (conversion not implemented yet)", 
-                                       message_count);
+                        rclcpp::SerializedMessage serialized_msg(*bag_message->serialized_data);
+                        livox_ros_driver2::msg::CustomMsg livox_msg;
+                        livox_serialization.deserialize_message(&serialized_msg, &livox_msg);
+
+                        cloud_input_->reserve(cloud_input_->size() + livox_msg.point_num);
+                        for (uint32_t i = 0; i < livox_msg.point_num; ++i) {
+                            Common::Point p;
+                            p.x = livox_msg.points[i].x;
+                            p.y = livox_msg.points[i].y;
+                            p.z = livox_msg.points[i].z;
+                            p.ring = static_cast<uint16_t>(livox_msg.points[i].line);
+                            cloud_input_->push_back(p);
                         }
+                        message_count++;
                     } catch (const std::exception& e) {
                         RCLCPP_ERROR(rclcpp::get_logger("data_preprocess"), 
                                     "Error processing CustomMsg %d: %s", message_count, e.what());
@@ -198,4 +231,4 @@ public:
 
 typedef std::shared_ptr<DataPreprocess> DataPreprocessPtr;
 
-#endif
+#endif // DATA_PREPROCESS_HPP

@@ -1,38 +1,38 @@
-# Camera intrinsics
 fast_calib:
   ros__parameters:
-    # mid360
-    fx: 522.123514287681
-    fy: 522.275153384482
-    cx: 773.466430504725
-    cy: 534.053165700174
-    k1: 0.00324949759262203
-    k2: -0.0171040538369167
-    p1: 0.000669657443377146
-    p2: -0.000350205468789575
+    # Camera intrinsics — replace with your calibrated values
+    fx: 0.0
+    fy: 0.0
+    cx: 0.0
+    cy: 0.0
+    k1: 0.0
+    k2: 0.0
+    p1: 0.0
+    p2: 0.0
 
     # Calibration target parameters
-    marker_size: 0.16 # ArUco marker size (our test data uses 0.16m; adjust to match your marker size)
-    delta_width_qr_center: 0.47 # Half the distance between the centers of two markers in the horizontal direction
-    delta_height_qr_center: 0.27 # Half the distance between the centers of two markers in the vertical direction
-    delta_width_circles: 0.4 # Distance between the centers of two circles in the horizontal direction
-    delta_height_circles: 0.3 # Distance between the centers of two circles in the vertical direction
-    circle_radius: 0.10 # Radius of the circle
+    marker_size: 0.16           # ArUco marker size in meters
+    delta_width_qr_center: 0.47 # Half the horizontal distance between marker centers
+    delta_height_qr_center: 0.27 # Half the vertical distance between marker centers
+    delta_width_circles: 0.4    # Horizontal distance between circle centers
+    delta_height_circles: 0.3   # Vertical distance between circle centers
+    circle_radius: 0.10         # Radius of the circular holes
 
-    # Distance filter
+    # Distance filter — adjust to frame the calibration target
     x_min: 1.5
     x_max: 3.0
     y_min: -1.5
     y_max: 2.0
-    z_min: -0.5 # avia and mid360: -0.5 ouster: -0.8
+    z_min: -0.5
     z_max: 2.0
 
-    lidar_topic: "/livox/points" # /ouster/points /livox/lidar
-    bag_path: "/home/maro/Pictures/rosbag2_2025_07_11-21_17_03"
-    image_path: "/home/maro/Pictures/00.png"
+    # Input — set these to your actual file paths
+    lidar_topic: "/livox/lidar"  # e.g. /ouster/points, /livox/lidar
+    bag_path: "/path/to/input.bag"
+    image_path: "/path/to/image.png"
 
     # Output
-    output_path: "/home/parallels/bag_image/bag_images"
+    output_path: "/path/to/output"
 
-    # Add minimum detected markers parameter
+    # Minimum number of ArUco markers that must be detected
     min_detected_markers: 3

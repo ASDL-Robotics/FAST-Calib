@@ -1,20 +1,31 @@
 # FAST-Calib (ROS 2)
 
+## FAST-Calib: LiDAR-Camera Extrinsic Calibration in One Second
+
 FAST-Calib is an automatic target-based extrinsic calibration tool for LiDAR-camera systems (eg., [FAST-LIVO2](https://github.com/hku-mars/FAST-LIVO2)).
 
 **Key highlights include:**
 
 1. Support solid-state and mechanical LiDAR.
 2. No need for any initial extrinsic parameters.
-3. Achieve highly accurate calibration results **in just 2 seconds**.
+3. Achieve highly accurate calibration results **in just one seconds**.
 
-**In short, it makes extrinsic calibration as simple as intrinsic calibration.**
+In short, it makes extrinsic calibration as simple as intrinsic calibration.
+
+**Related paper:** 
+
+[FAST-Calib: LiDAR-Camera Extrinsic Calibration in One Second](https://www.arxiv.org/pdf/2507.17210)
 
 📬 For further assistance or inquiries, please feel free to contact Chunran Zheng at zhengcr@connect.hku.hk.
 
 <p align="center">
   <img src="./pics/calib.jpg" width="100%">
-  <font color=#a0a0a0 size=2>Left: Example of circle extraction from Mid360 point cloud | Right: Point cloud colored with calibrated extrinsic.</font>
+  <font color=#a0a0a0 size=2>Left: Example of Mid360 LiDAR calibration. Right: Point cloud colored with the calibrated extrinsics.</font>
+</p>
+
+<p align="center">
+  <img src="./pics/all_lidar_type.jpg" width="100%">
+  <font color=#a0a0a0 size=2>Circular hole extraction supports multiple LiDAR models.</font>
 </p>
 
 ## 1. Prerequisites
@@ -23,34 +34,40 @@ PCL>=1.8, OpenCV>=4.0.
 
 ## 2. Run our examples
 
-1. Prepare the static acquisition data in `calib_data` folder (see [sample data](https://connecthkuhk-my.sharepoint.com/:f:/g/personal/zhengcr_connect_hku_hk/Eq_k_4Mf_11Eggg4a5lbRzgBHwd0EivtCJd2ExtcNlu1FA?e=vjm4gH) from Mid360, Avia and Ouster):
-
+1. Prepare the static acquisition data in the `calib_data` folder (see [Single-scene Calibration Sample Data](https://drive.google.com/drive/folders/1W87Dx3MUuPhTpCLvaavWqNUJZV03yU6L?usp=drive_link) from Mid360, Avia and Ouster, and [Multi-scene Calibration Sample Data](https://drive.google.com/drive/folders/1g__plgFqp5tsk-TY7Ioh4RXru62AdLmr?usp=drive_link) from Avia):
 - rosbag containing point cloud messages
 - corresponding image
 
-2. Run the calibration process:
-
+2. Run the single-scene calibration process:
 ```bash
 ros2 launch fast_calib calib_launch.py
 ```
 
+3. After completing Step 2 for at least three different scenes, you can perform multi-scene joint calibration:
+```bash
+ros2 launch fast_calib multi_calib.launch.py
+```
+
 ## 3. Run on your own sensor suite
 
-1. Customize the calibration target in the image below.
-2. Record data to ros2 bag.
-3. if you are using livox ros driver2 make sure that output of your points in PointCloud2 format (edit the launch file of desired livox LiDAR and make sure that xfer_format = 0 )
-4. Provide the instrinsic matrix in `qr_params.yaml`.
-5. Set distance filter in `qr_params.yaml` for board point cloud (extra points are acceptable).
+1. Customize the calibration target in the image below, with the CAD model available [here](https://drive.google.com/file/d/1hdC8xGCHNP47a-wSLPyjr_tpOeynNFEG/view?usp=sharing).
+2. Collect data from three scenes, with placement illustrated below, and record them into the corresponding rosbags.
+3. If you are using Livox ROS Driver 2, ensure points are output in `PointCloud2` format (set `xfer_format = 0` in the driver launch file).
+4. Provide the intrinsic matrix in `qr_params.yaml`.
+5. Set the distance filter in `qr_params.yaml` to frame the calibration board (extra points are acceptable).
 6. Calibrate now!
 
+💡 **Note:** You can run `scripts/distance_filter_tool.py` to quickly obtain suitable filter parameters.
 <p align="center">
   <img src="./pics/calibration_target.jpg" width="100%">
   <font color=#a0a0a0 size=2>Left: Actual calibration target | Right: Technical drawing with annotated dimensions.</font>
 </p>
+<p align="center">
+  <img src="./pics/multi-scene.jpg" width="100%">
+  <font color=#a0a0a0 size=2>Placement of the calibration target for multi-scene data collection: (a) facing forward, (b) oriented to the right, (c) oriented to the left.</font>
+</p>
 
 ## 4. Appendix
-
-Related article is coming soon...
 
 The calibration target design is based on the [velo2cam_calibration](https://github.com/beltransen/velo2cam_calibration).
 

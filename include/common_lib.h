@@ -7,8 +7,8 @@ which is included as part of this source code package.
 
 #ifndef COMMON_LIB_H
 #define COMMON_LIB_H
+#define PCL_NO_PRECOMPILE
 
-#include <opencv2/opencv.hpp>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
@@ -28,6 +28,7 @@ which is included as part of this source code package.
 #include <iomanip>
 #include <filesystem>
 
+#include <opencv2/opencv.hpp>
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include "color.h"
@@ -39,7 +40,24 @@ using namespace pcl;
 
 #define TARGET_NUM_CIRCLES 4
 #define DEBUG 1
-#define GEOMETRY_TOLERANCE 0.06
+#define GEOMETRY_TOLERANCE 0.08
+
+// ===== Custom point type: XYZ + ring =====
+namespace Common 
+{
+  struct Point
+  {
+    PCL_ADD_POINT4D;            // quad-word XYZ + padding
+    std::uint16_t ring = 0;     // scan line (mechanical/multi-line LiDAR)
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  } EIGEN_ALIGN16;
+}
+POINT_CLOUD_REGISTER_POINT_STRUCT(Common::Point,
+  (float, x, x)
+  (float, y, y)
+  (float, z, z)
+  (std::uint16_t, ring, ring)
+);
 
 // Parameters structure
 struct Params {
@@ -59,14 +77,14 @@ Params loadParameters(std::shared_ptr<rclcpp::Node> node) {
   Params params;
   
   // Declare and get parameters with default values
-  node->declare_parameter("fx", 1215.31801774424);
-  node->declare_parameter("fy", 1214.72961288138);
-  node->declare_parameter("cx", 1047.86571859677);
-  node->declare_parameter("cy", 745.068353101898);
-  node->declare_parameter("k1", -0.33574781188503);
-  node->declare_parameter("k2", 0.10996870793601);
-  node->declare_parameter("p1", 0.000157303079833973);
-  node->declare_parameter("p2", 0.000544930726278493);
+  node->declare_parameter("fx", 0.0);
+  node->declare_parameter("fy", 0.0);
+  node->declare_parameter("cx", 0.0);
+  node->declare_parameter("cy", 0.0);
+  node->declare_parameter("k1", 0.0);
+  node->declare_parameter("k2", 0.0);
+  node->declare_parameter("p1", 0.0);
+  node->declare_parameter("p2", 0.0);
   node->declare_parameter("marker_size", 0.2);
   node->declare_parameter("delta_width_qr_center", 0.55);
   node->declare_parameter("delta_height_qr_center", 0.35);
@@ -77,7 +95,7 @@ Params loadParameters(std::shared_ptr<rclcpp::Node> node) {
   node->declare_parameter("image_path", std::string("/path/to/image.png"));
   node->declare_parameter("bag_path", std::string("/path/to/input.bag"));
   node->declare_parameter("lidar_topic", std::string("/livox/lidar"));
-  node->declare_parameter("output_path", std::string("/media/psf/Home/FAST-Calib/bag_images"));
+  node->declare_parameter("output_path", std::string("/path/to/output"));
   node->declare_parameter("x_min", 1.5);
   node->declare_parameter("x_max", 3.0);
   node->declare_parameter("y_min", -1.5);
@@ -152,7 +170,7 @@ double computeRMSE(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud1,
     return std::sqrt(mse);
 }
 
-// 将 LiDAR 点云转换到 QR 码坐标系
+// Transform LiDAR point cloud into QR coordinate system
 void alignPointCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr &input_cloud,
   pcl::PointCloud<pcl::PointXYZ>::Ptr &output_cloud, const Eigen::Matrix4f &transformation) 
 {
@@ -165,7 +183,39 @@ void alignPointCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr &input_cloud,
   }
 }
 
-void projectPointCloudToImage(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud,
+void comb(int N, int K, std::vector<std::vector<int>> &groups) {
+  int upper_factorial = 1;
+  int lower_factorial = 1;
+
+  for (int i = 0; i < K; i++) {
+    upper_factorial *= (N - i);
+    lower_factorial *= (K - i);
+  }
+  int n_permutations = upper_factorial / lower_factorial;
+
+  if (DEBUG)
+    cout << N << " centers found. Iterating over " << n_permutations
+         << " possible sets of candidates" << endl;
+
+  std::string bitmask(K, 1);  // K leading 1's
+  bitmask.resize(N, 0);       // N-K trailing 0's
+
+  // print integers and permute bitmask
+  do {
+    std::vector<int> group;
+    for (int i = 0; i < N; ++i)  // [0..N-1] integers
+    {
+      if (bitmask[i]) {
+        group.push_back(i);
+      }
+    }
+    groups.push_back(group);
+  } while (std::prev_permutation(bitmask.begin(), bitmask.end()));
+
+  assert(groups.size() == n_permutations);
+}
+
+void projectPointCloudToImage(const pcl::PointCloud<Common::Point>::Ptr& cloud,
   const Eigen::Matrix4f& transformation,
   const cv::Mat& cameraMatrix,
   const cv::Mat& distCoeffs,
@@ -223,6 +273,43 @@ void projectPointCloudToImage(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud,
   }
 }
 
+void saveTargetHoleCenters(const pcl::PointCloud<pcl::PointXYZ>::Ptr& lidar_centers,
+                      const pcl::PointCloud<pcl::PointXYZ>::Ptr& qr_centers,
+                      const Params& params)
+{
+    if (lidar_centers->size() != 4 || qr_centers->size() != 4) {
+      std::cerr << "[saveTargetHoleCenters] The number of points in lidar_centers or qr_centers is not 4, skip saving." << std::endl;
+      return;
+    }
+    
+    std::string saveDir = params.output_path;
+    if (saveDir.back() != '/') saveDir += '/';
+    std::ofstream saveFile(saveDir + "circle_center_record.txt", std::ios::app);
+
+    if (!saveFile.is_open()) {
+        std::cerr << "[saveTargetHoleCenters] Cannot open file: " << saveDir + "circle_center_record.txt" << std::endl;
+        return;
+    }
+
+    // Get current system time
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+    saveFile << "time: " << std::put_time(std::localtime(&now_time), "%Y-%m-%d %H:%M:%S") << std::endl;
+
+    saveFile << "lidar_centers:";
+    for (const auto& pt : lidar_centers->points) {
+        saveFile << " {" << pt.x << "," << pt.y << "," << pt.z << "}";
+    }
+    saveFile << std::endl;
+    saveFile << "qr_centers:";
+    for (const auto& pt : qr_centers->points) {
+        saveFile << " {" << pt.x << "," << pt.y << "," << pt.z << "}";
+    }
+    saveFile << std::endl;
+    saveFile.close();
+    std::cout << BOLDGREEN << "[Record] Saved four pairs of circular hole centers to " << BOLDWHITE << saveDir << "circle_center_record.txt" << RESET << std::endl;
+}
+
 void saveCalibrationResults(const Params& params, const Eigen::Matrix4f& transformation, 
      const pcl::PointCloud<pcl::PointXYZRGB>::Ptr& colored_cloud, const cv::Mat& img_input)
 {
@@ -238,7 +325,6 @@ void saveCalibrationResults(const Params& params, const Eigen::Matrix4f& transfo
   // Create output directory if it doesn't exist
   std::filesystem::create_directories(outputDir);
 
-  // Save calibration parameters
   std::ofstream outFile(outputDir + "calib_result.txt");
   if (outFile.is_open()) 
   {
@@ -265,7 +351,7 @@ void saveCalibrationResults(const Params& params, const Eigen::Matrix4f& transfo
     outFile << std::setw(10) << transformation(0, 3) << ", " << std::setw(10) << transformation(1, 3) << ", " << std::setw(10) << transformation(2, 3) << "]\n";
 
     outFile.close();
-    std::cout << BOLDYELLOW << "[Result] Calibration results saved to " << BOLDWHITE << outputDir << "calib_result.txt" << RESET << std::endl;
+    std::cout << BOLDYELLOW << "[Result] Single-scene calibration results saved to " << BOLDWHITE << outputDir << "calib_result.txt" << RESET << std::endl;
   } 
   else
   {
@@ -290,129 +376,69 @@ void saveCalibrationResults(const Params& params, const Eigen::Matrix4f& transfo
   }
 }
 
-void sortPatternCenters(pcl::PointCloud<pcl::PointXYZ>::Ptr pc, pcl::PointCloud<pcl::PointXYZ>::Ptr v, const std::string& axis_mode = "camera") 
+void sortPatternCenters(pcl::PointCloud<pcl::PointXYZ>::Ptr pc,
+                        pcl::PointCloud<pcl::PointXYZ>::Ptr v,
+                        const std::string& axis_mode = "camera") 
 {
-  // 0 -- 1
-  // |    |
-  // 3 -- 2
-  if(pc->size() != 4) 
-  {
+  if (pc->size() != 4) {
     std::cerr << BOLDRED << "[sortPatternCenters] Number of " << axis_mode << " center points to be sorted is not 4." << RESET << std::endl;
     return;
   }
-  if (v->empty()) {
-    v->clear();
-    v->reserve(4);
-  }
 
-  // Check axis mode
-  bool is_lidar_mode = (axis_mode == "lidar");
+  pcl::PointCloud<pcl::PointXYZ>::Ptr work_pc(new pcl::PointCloud<pcl::PointXYZ>());
 
-  if (is_lidar_mode)
-  {
-    for (auto& point : pc->points) 
-    {
-      float x_new = -point.y;   // LiDAR Y → 相机 -X
-      float y_new = -point.z;   // LiDAR Z → 相机 -Y
-      float z_new = point.x;    // LiDAR X → 相机  Z
-
-      point.x = x_new;
-      point.y = y_new;
-      point.z = z_new;
+  // Coordinate transformation (LiDAR -> Camera)
+  if (axis_mode == "lidar") {
+    for (const auto& p : *pc) {
+      pcl::PointXYZ pt;
+      pt.x = -p.y;   // LiDAR Y -> Cam -X
+      pt.y = -p.z;   // LiDAR Z -> Cam -Y
+      pt.z = p.x;    // LiDAR X -> Cam Z
+      work_pc->push_back(pt);
     }
+  } else {
+    *work_pc = *pc;
   }
 
-  // Transform points to polar coordinates
-  pcl::PointCloud<pcl::PointXYZ>::Ptr spherical_centers(
-  new pcl::PointCloud<pcl::PointXYZ>());
-  int top_pt = 0;
-  int index = 0;  // Auxiliar index to be used inside loop
-  for (pcl::PointCloud<pcl::PointXYZ>::iterator pt = pc->points.begin();
-  pt < pc->points.end(); pt++, index++) 
-  {
-    pcl::PointXYZ spherical_center;
-    spherical_center.x = atan2(pt->y, pt->x);  // Horizontal
-    spherical_center.y =
-    atan2(sqrt(pt->x * pt->x + pt->y * pt->y), pt->z);  // Vertical
-    spherical_center.z =
-    sqrt(pt->x * pt->x + pt->y * pt->y + pt->z * pt->z);  // Range
-    spherical_centers->push_back(spherical_center);
+  // --- Sorting based on the local coordinate system of the pattern ---
+  // 1. Calculate the centroid of the points
+  Eigen::Vector4f centroid;
+  pcl::compute3DCentroid(*work_pc, centroid);
+  pcl::PointXYZ ref_origin(centroid[0], centroid[1], centroid[2]);
 
-    if (spherical_center.y < spherical_centers->points[top_pt].y) 
-    {
-      top_pt = index;
-    }
+  // 2. Project points to the XY plane relative to the centroid and calculate angles
+  std::vector<std::pair<float, int>> proj_points;
+  for (size_t i = 0; i < work_pc->size(); ++i) {
+    const auto& p = work_pc->points[i];
+    Eigen::Vector3f rel_vec(p.x - ref_origin.x, p.y - ref_origin.y, p.z - ref_origin.z);
+    proj_points.emplace_back(atan2(rel_vec.y(), rel_vec.x()), i);
   }
 
-  // Compute distances from top-most center to rest of points
-  vector<double> distances;
-  for (int i = 0; i < 4; i++) {
-    pcl::PointXYZ pt = pc->points[i];
-    pcl::PointXYZ upper_pt = pc->points[top_pt];
-    distances.push_back(sqrt(pow(pt.x - upper_pt.x, 2) +
-        pow(pt.y - upper_pt.y, 2) +
-        pow(pt.z - upper_pt.z, 2)));
+  // 3. Sort points based on the calculated angle
+  std::sort(proj_points.begin(), proj_points.end());
+
+  // 4. Output the sorted points into the result vector 'v'
+  v->resize(4);
+  for (int i = 0; i < 4; ++i) {
+    (*v)[i] = work_pc->points[proj_points[i].second];
   }
 
-  // Get indices of closest and furthest points
-  int min_dist = (top_pt + 1) % 4, max_dist = top_pt;
-  for (int i = 0; i < 4; i++) {
-    if (i == top_pt) continue;
-    if (distances[i] > distances[max_dist]) {
-      max_dist = i;
-    }
-    if (distances[i] < distances[min_dist]) {
-      min_dist = i;
-    }
+  // 5. Verify the order (ensure it's counter-clockwise) and fix if necessary
+  const auto& p0 = v->points[0];
+  const auto& p1 = v->points[1];
+  const auto& p2 = v->points[2];
+  Eigen::Vector3f v01(p1.x - p0.x, p1.y - p0.y, 0);
+  Eigen::Vector3f v12(p2.x - p1.x, p2.y - p1.y, 0);
+  if (v01.cross(v12).z() > 0) {
+    std::swap((*v)[1], (*v)[3]);
   }
 
-  // Second highest point shoud be the one whose distance is the median value
-  int top_pt2 = 6 - (top_pt + max_dist + min_dist);  // 0 + 1 + 2 + 3 = 6
-
-  // Order upper row centers
-  int lefttop_pt = top_pt;
-  int righttop_pt = top_pt2;
-
-  if (spherical_centers->points[top_pt].x <
-    spherical_centers->points[top_pt2].x) {
-    int aux = lefttop_pt;
-    lefttop_pt = righttop_pt;
-    righttop_pt = aux;
-  }
-
-  // Swap indices if target is located in the pi,-pi discontinuity
-  double angle_diff = spherical_centers->points[lefttop_pt].x -
-  spherical_centers->points[righttop_pt].x;
-  if (angle_diff > M_PI - spherical_centers->points[lefttop_pt].x) {
-    int aux = lefttop_pt;
-    lefttop_pt = righttop_pt;
-    righttop_pt = aux;
-  }
-
-  // Define bottom row centers using lefttop == top_pt as hypothesis
-  int leftbottom_pt = min_dist;
-  int rightbottom_pt = max_dist;
-
-  // If lefttop != top_pt, swap indices
-  if (righttop_pt == top_pt) {
-    leftbottom_pt = max_dist;
-    rightbottom_pt = min_dist;
-  }
-
-  // Fill vector with sorted centers
-  v->push_back(pc->points[lefttop_pt]);
-  v->push_back(pc->points[righttop_pt]);
-  v->push_back(pc->points[rightbottom_pt]);
-  v->push_back(pc->points[leftbottom_pt]);
-
-  if (is_lidar_mode) 
-  {
-    for (auto& point : v->points)
-    {
-      float x_new = point.z;  
-      float y_new = -point.x; 
-      float z_new = -point.y;  
-
+  // 6. If the original input was in the lidar frame, transform the sorted points back
+  if (axis_mode == "lidar") {
+    for (auto& point : v->points) {
+      float x_new = point.z;    // Cam Z -> LiDAR X
+      float y_new = -point.x;   // Cam -X -> LiDAR Y
+      float z_new = -point.y;   // Cam -Y -> LiDAR Z
       point.x = x_new;
       point.y = y_new;
       point.z = z_new;
@@ -420,54 +446,97 @@ void sortPatternCenters(pcl::PointCloud<pcl::PointXYZ>::Ptr pc, pcl::PointCloud<
   }
 }
 
-// Square class for geometry validation
-class Square {
-private:
+class Square 
+{
+  private:
+    pcl::PointXYZ _center;
     std::vector<pcl::PointXYZ> _candidates;
-    float _delta_width;
-    float _delta_height;
-
-public:
-    Square(std::vector<pcl::PointXYZ> candidates, float delta_width, float delta_height)
-        : _candidates(candidates), _delta_width(delta_width), _delta_height(delta_height) 
-    {
-        // Sort candidates if needed
-        if (_candidates.size() == 4) {
-            // Simple sorting by distance from origin
-            std::sort(_candidates.begin(), _candidates.end(), 
-                [](const pcl::PointXYZ& a, const pcl::PointXYZ& b) {
-                    return (a.x*a.x + a.y*a.y + a.z*a.z) < (b.x*b.x + b.y*b.y + b.z*b.z);
-                });
-        }
+    float _target_width, _target_height, _target_diagonal;
+ 
+  public:
+    Square(std::vector<pcl::PointXYZ> candidates, float width, float height) {
+      _candidates = candidates;
+      _target_width = width;
+      _target_height = height;
+      _target_diagonal = sqrt(pow(width, 2) + pow(height, 2));
+ 
+      // Compute candidates centroid
+      _center.x = _center.y = _center.z = 0;
+      for (int i = 0; i < (int)candidates.size(); ++i) {
+        _center.x += candidates[i].x;
+        _center.y += candidates[i].y;
+        _center.z += candidates[i].z;
+      }
+ 
+      _center.x /= candidates.size();
+      _center.y /= candidates.size();
+      _center.z /= candidates.size();
     }
+ 
+    float distance(pcl::PointXYZ pt1, pcl::PointXYZ pt2) {
+      return sqrt(pow(pt1.x - pt2.x, 2) + pow(pt1.y - pt2.y, 2) +
+                  pow(pt1.z - pt2.z, 2));
+    }
+ 
+    pcl::PointXYZ at(int i) {
+      assert(0 <= i && i < 4);
+      return _candidates[i];
+    }
+ 
+    // Robust is_valid(): checks two possible orderings of side lengths
+    // (width-height vs. height-width) after angular sorting.
+    bool is_valid() 
+    {
+      if (_candidates.size() != 4) return false;
 
-    bool is_valid() {
-        if (_candidates.size() != 4) return false;
-        
-        // Check if the points form a rectangle with expected dimensions
-        // Simple geometry check - you can make this more sophisticated
-        float avg_width = 0, avg_height = 0;
-        int width_count = 0, height_count = 0;
-        
-        for (size_t i = 0; i < _candidates.size(); ++i) {
-            for (size_t j = i + 1; j < _candidates.size(); ++j) {
-                float dx = _candidates[i].x - _candidates[j].x;
-                float dy = _candidates[i].y - _candidates[j].y;
-                float distance = sqrt(dx*dx + dy*dy);
-                
-                // Check if this distance matches expected width or height
-                if (abs(distance - _delta_width) < GEOMETRY_TOLERANCE) {
-                    avg_width += distance;
-                    width_count++;
-                } else if (abs(distance - _delta_height) < GEOMETRY_TOLERANCE) {
-                    avg_height += distance;
-                    height_count++;
-                }
-            }
+      pcl::PointCloud<pcl::PointXYZ>::Ptr candidates_cloud(new pcl::PointCloud<pcl::PointXYZ>());
+      for(const auto& p : _candidates) candidates_cloud->push_back(p);
+
+      // Check if candidates are at a reasonable distance from their centroid
+      for (int i = 0; i < (int)_candidates.size(); ++i) {
+        float d = distance(_center, _candidates[i]);
+        // Check if distance from center to corner is close to half the diagonal length
+        if (fabs(d - _target_diagonal / 2.) / (_target_diagonal / 2.) > GEOMETRY_TOLERANCE * 2.0) {
+          return false;
         }
-        
-        // We should have at least 2 width measurements and 2 height measurements
-        return (width_count >= 2 && height_count >= 2);
+      }
+      
+      // Sort the corners counter-clockwise
+      pcl::PointCloud<pcl::PointXYZ>::Ptr sorted_centers(new pcl::PointCloud<pcl::PointXYZ>());
+      sortPatternCenters(candidates_cloud, sorted_centers, "camera");
+      
+      // Get the four side lengths from the sorted points
+      float s01 = distance(sorted_centers->points[0], sorted_centers->points[1]);
+      float s12 = distance(sorted_centers->points[1], sorted_centers->points[2]);
+      float s23 = distance(sorted_centers->points[2], sorted_centers->points[3]);
+      float s30 = distance(sorted_centers->points[3], sorted_centers->points[0]);
+
+      // Check for pattern 1: width, height, width, height
+      bool pattern1_ok = 
+        (fabs(s01 - _target_width) / _target_width < GEOMETRY_TOLERANCE) &&
+        (fabs(s12 - _target_height) / _target_height < GEOMETRY_TOLERANCE) &&
+        (fabs(s23 - _target_width) / _target_width < GEOMETRY_TOLERANCE) &&
+        (fabs(s30 - _target_height) / _target_height < GEOMETRY_TOLERANCE);
+
+      // Check for pattern 2: height, width, height, width
+      bool pattern2_ok = 
+        (fabs(s01 - _target_height) / _target_height < GEOMETRY_TOLERANCE) &&
+        (fabs(s12 - _target_width) / _target_width < GEOMETRY_TOLERANCE) &&
+        (fabs(s23 - _target_height) / _target_height < GEOMETRY_TOLERANCE) &&
+        (fabs(s30 - _target_width) / _target_width < GEOMETRY_TOLERANCE);
+
+      if (!pattern1_ok && !pattern2_ok) {
+        return false;
+      }
+      
+      // Final check on perimeter
+      float perimeter = s01 + s12 + s23 + s30;
+      float ideal_perimeter = 2 * (_target_width + _target_height);
+      if (fabs(perimeter - ideal_perimeter) / ideal_perimeter > GEOMETRY_TOLERANCE) {
+        return false;
+      }
+ 
+      return true;
     }
 };
 

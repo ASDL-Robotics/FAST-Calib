@@ -40,10 +40,9 @@ if (CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 endif()
 
-# Create executable
+# Single-scene calibration executable
 add_executable(fast_calib src/main.cpp)
 
-# Dependencies for the executable
 ament_target_dependencies(fast_calib
   rclcpp
   std_msgs
@@ -67,9 +66,36 @@ target_link_libraries(fast_calib
   ${OpenCV_LIBRARIES}
 )
 
+# Multi-scene calibration executable
+add_executable(multi_fast_calib src/multi_scene.cpp)
+
+ament_target_dependencies(multi_fast_calib
+  rclcpp
+  std_msgs
+  sensor_msgs
+  geometry_msgs
+  nav_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  pcl_conversions
+  cv_bridge
+  image_transport
+  image_geometry
+  rosbag2_cpp
+  rosbag2_storage
+  ament_index_cpp
+)
+
+target_link_libraries(multi_fast_calib
+  ${PCL_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+)
+
 # Install targets
 install(TARGETS
   fast_calib
+  multi_fast_calib
   DESTINATION lib/${PROJECT_NAME}
 )
 
