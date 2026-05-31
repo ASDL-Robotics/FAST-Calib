@@ -1,11 +1,23 @@
 <?xml version="1.0"?>
-<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypecheck="true"?>
 <package format="3">
-  <name>FAST-Calib-Interactive</name>
+  <name>fast_calib_interactive</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="sfish7@gatech.edu">fishy</maintainer>
-  <license>TODO: License declaration</license>
+  <description>Interactive CLI for collecting LiDAR-camera data and orchestrating FAST-Calib calibration runs.</description>
+
+  <maintainer email="zhengcr@connect.hku.hk">Chunran Zheng</maintainer>
+  <license>GPL-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>rosbag2_py</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>fast_calib</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
