@@ -402,7 +402,7 @@ void sortPatternCenters(pcl::PointCloud<pcl::PointXYZ>::Ptr pc,
 
   // --- Sorting based on the local coordinate system of the pattern ---
   // 1. Calculate the centroid of the points
-  Eigen::Vector4f centroid;
+  Eigen::Vector4f centroid = Eigen::Vector4f::Zero();
   pcl::compute3DCentroid(*work_pc, centroid);
   pcl::PointXYZ ref_origin(centroid[0], centroid[1], centroid[2]);
 

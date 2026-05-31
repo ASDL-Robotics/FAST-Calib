@@ -8,7 +8,6 @@ which is included as part of this source code package.
 #ifndef DATA_PREPROCESS_HPP
 #define DATA_PREPROCESS_HPP
 
-#include "CustomMsg.h"
 #include <Eigen/Core>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_cloud.h>
@@ -19,6 +18,7 @@ which is included as part of this source code package.
 #include <rosbag2_cpp/converter_interfaces/serialization_format_converter.hpp>
 #include <rosbag2_storage/storage_options.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <rclcpp/serialization.hpp>
 #include <fstream>
 #include "common_lib.h"
@@ -179,42 +179,10 @@ public:
                     }
                 }
             }
-        } else if (actual_topic_type == "livox_ros_driver2/msg/CustomMsg") {
-            RCLCPP_INFO(rclcpp::get_logger("data_preprocess"), 
-                       "Processing Livox CustomMsg messages...");
-            lidar_type_ = LiDARType::Solid;
-
-            rclcpp::Serialization<livox_ros_driver2::msg::CustomMsg> livox_serialization;
-
-            while (reader.has_next()) {
-                auto bag_message = reader.read_next();
-
-                if (bag_message->topic_name == lidar_topic) {
-                    try {
-                        rclcpp::SerializedMessage serialized_msg(*bag_message->serialized_data);
-                        livox_ros_driver2::msg::CustomMsg livox_msg;
-                        livox_serialization.deserialize_message(&serialized_msg, &livox_msg);
-
-                        cloud_input_->reserve(cloud_input_->size() + livox_msg.point_num);
-                        for (uint32_t i = 0; i < livox_msg.point_num; ++i) {
-                            Common::Point p;
-                            p.x = livox_msg.points[i].x;
-                            p.y = livox_msg.points[i].y;
-                            p.z = livox_msg.points[i].z;
-                            p.ring = static_cast<uint16_t>(livox_msg.points[i].line);
-                            cloud_input_->push_back(p);
-                        }
-                        message_count++;
-                    } catch (const std::exception& e) {
-                        RCLCPP_ERROR(rclcpp::get_logger("data_preprocess"), 
-                                    "Error processing CustomMsg %d: %s", message_count, e.what());
-                        continue;
-                    }
-                }
-            }
         } else {
             RCLCPP_ERROR(rclcpp::get_logger("data_preprocess"), 
-                        "Unsupported topic type: %s", actual_topic_type.c_str());
+                        "Unsupported topic type: %s. Only sensor_msgs/msg/PointCloud2 is supported.",
+                        actual_topic_type.c_str());
             return;
         }
         

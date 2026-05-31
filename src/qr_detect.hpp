@@ -236,10 +236,10 @@ class QRDetect
 
         // Estimate 3D position of the board using detected markers
     #if (CV_MAJOR_VERSION == 3 && CV_MINOR_VERSION <= 2) || CV_MAJOR_VERSION < 3
-        int valid = cv::aruco::estimatePoseBoard(corners, ids, board, cameraMatrix_,
+        [[maybe_unused]] int valid = cv::aruco::estimatePoseBoard(corners, ids, board, cameraMatrix_,
                                                 distCoeffs_, rvec, tvec);
     #else
-        int valid = cv::aruco::estimatePoseBoard(corners, ids, board, cameraMatrix_,
+        [[maybe_unused]] int valid = cv::aruco::estimatePoseBoard(corners, ids, board, cameraMatrix_,
                                                 distCoeffs_, rvec, tvec, true);
     #endif
 
