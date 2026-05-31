@@ -1,5 +1,11 @@
+/* 
+Developer: Chunran Zheng <zhengcr@connect.hku.hk>
 
-#include <ros/ros.h>
+This file is subject to the terms and conditions outlined in the 'LICENSE' file,
+which is included as part of this source code package.
+*/
+
+#include <rclcpp/rclcpp.hpp>
 #include <Eigen/Dense>
 #include <fstream>
 #include <sstream>
@@ -7,7 +13,6 @@
 #include <vector>
 #include <string>
 #include <iomanip>
-#include <sys/stat.h>
 #include <cmath>
 #include "common_lib.h"
 #include "data_preprocess.hpp"
@@ -19,6 +24,7 @@ struct RigidResult
   double rms = 0.0;
   bool ok = false;
 };
+
 struct Block {
   std::string time_line;
   std::vector<Eigen::Vector3d> lidar_pts; // 4
@@ -81,8 +87,7 @@ RigidResult SolveRigidTransformWeighted(
 
 static bool parseCentersLine(const std::string& line, std::vector<Eigen::Vector3d>& out_pts)
 {
-    // 支持形如：lidar_centers: {x,y,z} {x,y,z} {x,y,z} {x,y,z}
-    // 或 qr_centers: {x,y,z} {x,y,z} ...
+    // Supports lines like: lidar_centers: {x,y,z} {x,y,z} {x,y,z} {x,y,z}
     std::regex brace_re("\\{([^\\}]*)\\}");
     auto begin = std::sregex_iterator(line.begin(), line.end(), brace_re);
     auto end   = std::sregex_iterator();
@@ -90,16 +95,14 @@ static bool parseCentersLine(const std::string& line, std::vector<Eigen::Vector3
     out_pts.clear();
     for (auto it = begin; it != end; ++it) {
         std::string xyz = (*it)[1]; // "x,y,z"
-        // 去空格
         xyz.erase(remove_if(xyz.begin(), xyz.end(), ::isspace), xyz.end());
-        // 用逗号分割
         std::vector<double> vals;
         std::stringstream ss(xyz);
         std::string tok;
         while (std::getline(ss, tok, ',')) {
-        try {
-            vals.push_back(std::stod(tok));
-        } catch (...) { return false; }
+            try {
+                vals.push_back(std::stod(tok));
+            } catch (...) { return false; }
         }
         if (vals.size() != 3) return false;
         out_pts.emplace_back(vals[0], vals[1], vals[2]);
@@ -109,21 +112,21 @@ static bool parseCentersLine(const std::string& line, std::vector<Eigen::Vector3
 
 int main(int argc, char** argv)
 {
-    ros::init(argc, argv, "multi_fast_calib");
-    ros::NodeHandle nh;
-    Params params = loadParameters(nh);
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<rclcpp::Node>("multi_fast_calib");
+
+    Params params = loadParameters(node);
 
     if (params.output_path.back() != '/') params.output_path += '/';
     std::string midtxt_path = params.output_path + "circle_center_record.txt";
-
-    if (params.output_path.back() != '/') params.output_path += '/';
     std::string multi_output_path = params.output_path + "multi_calib_result.txt";
 
-    // 读取全部行
+    // Read all lines from the intermediate results file
     std::ifstream fin(midtxt_path);
     if (!fin.is_open())
     {
-        ROS_ERROR("Failed to open txt file: %s", midtxt_path.c_str());
+        RCLCPP_ERROR(node->get_logger(), "Failed to open txt file: %s", midtxt_path.c_str());
+        rclcpp::shutdown();
         return 1;
     }
     std::vector<std::string> lines;
@@ -133,11 +136,12 @@ int main(int argc, char** argv)
     }
     fin.close();
     if (lines.size() < 9) {
-        ROS_ERROR("File has fewer than 9 lines, cannot get 3 blocks.");
+        RCLCPP_ERROR(node->get_logger(), "File has fewer than 9 lines, cannot get 3 blocks.");
+        rclcpp::shutdown();
         return 1;
     }
 
-    // 解析所有 block（按三行一组：time + lidar_centers + qr_centers）
+    // Parse all blocks (3 lines each: time + lidar_centers + qr_centers)
     std::vector<Block> blocks;
     for (size_t i = 0; i + 2 < lines.size(); ++i) 
     {
@@ -150,26 +154,25 @@ int main(int argc, char** argv)
 
             if (!parseCentersLine(lines[i+1], b.lidar_pts)) continue;
             if (!parseCentersLine(lines[i+2], b.qr_pts))    continue;
-            // 要求每组正好4个
             if (b.lidar_pts.size() == 4 && b.qr_pts.size() == 4) 
             {
                 blocks.push_back(std::move(b));
-                i += 2; // 跳过这个block
+                i += 2;
             }
         }
     }
     if (blocks.size() < 3) 
     {
-        ROS_ERROR("Parsed blocks < 3 (got %zu).", blocks.size());
+        RCLCPP_ERROR(node->get_logger(), "Parsed blocks < 3 (got %zu).", blocks.size());
+        rclcpp::shutdown();
         return 1;
     }
 
-    // 取最后3个 block
+    // Use the last 3 blocks
     std::vector<Eigen::Vector3d> L, C;
     for (size_t k = blocks.size() - 3; k < blocks.size(); ++k) 
     {
         const auto& b = blocks[k];
-        // 依次拼入，保持顺序一致
         for (int i = 0; i < 4; ++i) 
         {
             L.push_back(b.lidar_pts[i]);
@@ -177,7 +180,8 @@ int main(int argc, char** argv)
         }
     }
     if (L.size() != 12 || C.size() != 12) {
-        ROS_ERROR("Merged pairs not equal to 12 (L=%zu, C=%zu).", L.size(), C.size());
+        RCLCPP_ERROR(node->get_logger(), "Merged pairs not equal to 12 (L=%zu, C=%zu).", L.size(), C.size());
+        rclcpp::shutdown();
         return 1;
     }
 
@@ -190,14 +194,14 @@ int main(int argc, char** argv)
         std::cout << "C[" << i << "]: (" << C[i](0) << ", " << C[i](1) << ", " << C[i](2) << ")" << std::endl;
     }
 
-    // 一次性求解
+    // Solve for rigid transform
     auto res = SolveRigidTransformWeighted(L, C, nullptr);
     if (!res.ok) {
-        ROS_ERROR("SolveRigidTransformWeighted failed.");
+        RCLCPP_ERROR(node->get_logger(), "SolveRigidTransformWeighted failed.");
+        rclcpp::shutdown();
         return 1;
     }
 
-    // 打印 / 保存
     Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
     T.block<3,3>(0,0) = res.R;
     T.block<3,1>(0,3) = res.t;
@@ -207,6 +211,9 @@ int main(int argc, char** argv)
 
     std::cout << BOLDYELLOW << "[Result] Multi-scene calibration: extrinsic parameters T_cam_lidar = " << RESET << std::endl;
     std::cout << BOLDCYAN << std::fixed << std::setprecision(6) << T << RESET << std::endl;
+
+    // Create output directory if needed
+    std::filesystem::create_directories(params.output_path);
 
     std::ofstream fout(multi_output_path);
     if (fout.is_open()) 
@@ -222,8 +229,9 @@ int main(int argc, char** argv)
         fout.close();
         std::cout << BOLDYELLOW << "[Result] Multi-scene calibration results saved to " << BOLDWHITE << multi_output_path << RESET << std::endl;
     } else {
-        ROS_WARN("Failed to write out file: %s", multi_output_path.c_str());
+        RCLCPP_WARN(node->get_logger(), "Failed to write out file: %s", multi_output_path.c_str());
     }
 
+    rclcpp::shutdown();
     return 0;
 }

@@ -14,8 +14,7 @@ which is included as part of this source code package.
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/common/transforms.h>
-#include <pcl_ros/point_cloud.h>
-#include <pcl_ros/filters/passthrough.h>
+#include <pcl/filters/passthrough.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/features/boundary.h>
@@ -25,9 +24,15 @@ which is included as part of this source code package.
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/registration/transformation_estimation_svd.h>
 #include <cmath>
+#include <fstream>
+#include <iomanip>
+#include <filesystem>
+
 #include <opencv2/opencv.hpp>
-#include <tf/tf.h>
+#include <tf2/LinearMath/Transform.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include "color.h"
+#include <rclcpp/rclcpp.hpp>
 
 using namespace std;
 using namespace cv;
@@ -37,13 +42,13 @@ using namespace pcl;
 #define DEBUG 1
 #define GEOMETRY_TOLERANCE 0.08
 
-// ===== 自定义点类型：XYZ + ring =====
+// ===== Custom point type: XYZ + ring =====
 namespace Common 
 {
   struct Point
   {
     PCL_ADD_POINT4D;            // quad-word XYZ + padding
-    std::uint16_t ring = 0;     // 线号（机械雷达/多线雷达）
+    std::uint16_t ring = 0;     // scan line (mechanical/multi-line LiDAR)
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   } EIGEN_ALIGN16;
 }
@@ -54,7 +59,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(Common::Point,
   (std::uint16_t, ring, ring)
 );
 
-// 参数结构体
+// Parameters structure
 struct Params {
   double x_min, x_max, y_min, y_max, z_min, z_max;
   double fx, fy, cx, cy, k1, k2, p1, p2;
@@ -67,34 +72,78 @@ struct Params {
   string output_path;
 };
 
-// 读取参数
-Params loadParameters(ros::NodeHandle &nh) {
+// Load parameters using ROS 2 parameter interface
+Params loadParameters(std::shared_ptr<rclcpp::Node> node) {
   Params params;
-  nh.param("fx", params.fx, 1215.31801774424);
-  nh.param("fy", params.fy, 1214.72961288138);
-  nh.param("cx", params.cx, 1047.86571859677);
-  nh.param("cy", params.cy, 745.068353101898);
-  nh.param("k1", params.k1, -0.33574781188503);
-  nh.param("k2", params.k2, 0.10996870793601);
-  nh.param("p1", params.p1, 0.000157303079833973);
-  nh.param("p2", params.p2, 0.000544930726278493);
-  nh.param("marker_size", params.marker_size, 0.2);
-  nh.param("delta_width_qr_center", params.delta_width_qr_center, 0.55);
-  nh.param("delta_height_qr_center", params.delta_height_qr_center, 0.35);
-  nh.param("delta_width_circles", params.delta_width_circles, 0.5);
-  nh.param("delta_height_circles", params.delta_height_circles, 0.4);
-  nh.param("min_detected_markers", params.min_detected_markers, 3);
-  nh.param("circle_radius", params.circle_radius, 0.12);
-  nh.param("image_path", params.image_path, string("/home/chunran/calib_ws/src/fast_calib/data/image.png"));
-  nh.param("bag_path", params.bag_path, string("/home/chunran/calib_ws/src/fast_calib/data/input.bag"));
-  nh.param("lidar_topic", params.lidar_topic, string("/livox/lidar"));
-  nh.param("output_path", params.output_path, string("/home/chunran/calib_ws/src/fast_calib/output"));
-  nh.param("x_min", params.x_min, 1.5);
-  nh.param("x_max", params.x_max, 3.0);
-  nh.param("y_min", params.y_min, -1.5);
-  nh.param("y_max", params.y_max, 2.0);
-  nh.param("z_min", params.z_min, -0.5);
-  nh.param("z_max", params.z_max, 2.0);
+  
+  // Declare and get parameters with default values
+  node->declare_parameter("fx", 0.0);
+  node->declare_parameter("fy", 0.0);
+  node->declare_parameter("cx", 0.0);
+  node->declare_parameter("cy", 0.0);
+  node->declare_parameter("k1", 0.0);
+  node->declare_parameter("k2", 0.0);
+  node->declare_parameter("p1", 0.0);
+  node->declare_parameter("p2", 0.0);
+  node->declare_parameter("marker_size", 0.2);
+  node->declare_parameter("delta_width_qr_center", 0.55);
+  node->declare_parameter("delta_height_qr_center", 0.35);
+  node->declare_parameter("delta_width_circles", 0.5);
+  node->declare_parameter("delta_height_circles", 0.4);
+  node->declare_parameter("min_detected_markers", 3);
+  node->declare_parameter("circle_radius", 0.12);
+  node->declare_parameter("image_path", std::string("/path/to/image.png"));
+  node->declare_parameter("bag_path", std::string("/path/to/input.bag"));
+  node->declare_parameter("lidar_topic", std::string("/livox/lidar"));
+  node->declare_parameter("output_path", std::string("/path/to/output"));
+  node->declare_parameter("x_min", 1.5);
+  node->declare_parameter("x_max", 3.0);
+  node->declare_parameter("y_min", -1.5);
+  node->declare_parameter("y_max", 2.0);
+  node->declare_parameter("z_min", -0.5);
+  node->declare_parameter("z_max", 2.0);
+
+  // Get parameter values with error handling
+  try {
+    params.fx = node->get_parameter("fx").as_double();
+    params.fy = node->get_parameter("fy").as_double();
+    params.cx = node->get_parameter("cx").as_double();
+    params.cy = node->get_parameter("cy").as_double();
+    params.k1 = node->get_parameter("k1").as_double();
+    params.k2 = node->get_parameter("k2").as_double();
+    params.p1 = node->get_parameter("p1").as_double();
+    params.p2 = node->get_parameter("p2").as_double();
+    params.marker_size = node->get_parameter("marker_size").as_double();
+    params.delta_width_qr_center = node->get_parameter("delta_width_qr_center").as_double();
+    params.delta_height_qr_center = node->get_parameter("delta_height_qr_center").as_double();
+    params.delta_width_circles = node->get_parameter("delta_width_circles").as_double();
+    params.delta_height_circles = node->get_parameter("delta_height_circles").as_double();
+    params.min_detected_markers = node->get_parameter("min_detected_markers").as_int();
+    params.circle_radius = node->get_parameter("circle_radius").as_double();
+    params.image_path = node->get_parameter("image_path").as_string();
+    params.bag_path = node->get_parameter("bag_path").as_string();
+    params.lidar_topic = node->get_parameter("lidar_topic").as_string();
+    params.output_path = node->get_parameter("output_path").as_string();
+    params.x_min = node->get_parameter("x_min").as_double();
+    params.x_max = node->get_parameter("x_max").as_double();
+    params.y_min = node->get_parameter("y_min").as_double();
+    params.y_max = node->get_parameter("y_max").as_double();
+    params.z_min = node->get_parameter("z_min").as_double();
+    params.z_max = node->get_parameter("z_max").as_double();
+  } catch (const std::exception& e) {
+    RCLCPP_ERROR(node->get_logger(), "Error loading parameters: %s", e.what());
+    throw;
+  }
+  
+  // Log loaded parameters for debugging
+  RCLCPP_INFO(node->get_logger(), "Loaded parameters:");
+  RCLCPP_INFO(node->get_logger(), "  Camera: fx=%.2f, fy=%.2f, cx=%.2f, cy=%.2f", 
+              params.fx, params.fy, params.cx, params.cy);
+  RCLCPP_INFO(node->get_logger(), "  Image path: %s", params.image_path.c_str());
+  RCLCPP_INFO(node->get_logger(), "  Bag path: %s", params.bag_path.c_str());
+  RCLCPP_INFO(node->get_logger(), "  LiDAR topic: %s", params.lidar_topic.c_str());
+  RCLCPP_INFO(node->get_logger(), "  Output path: %s", params.output_path.c_str());
+  
   return params;
 }
 
@@ -121,7 +170,7 @@ double computeRMSE(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud1,
     return std::sqrt(mse);
 }
 
-// 将 LiDAR 点云转换到 QR 码坐标系
+// Transform LiDAR point cloud into QR coordinate system
 void alignPointCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr &input_cloud,
   pcl::PointCloud<pcl::PointXYZ>::Ptr &output_cloud, const Eigen::Matrix4f &transformation) 
 {
@@ -242,7 +291,7 @@ void saveTargetHoleCenters(const pcl::PointCloud<pcl::PointXYZ>::Ptr& lidar_cent
         return;
     }
 
-    // 获取当前系统时间
+    // Get current system time
     auto now = std::chrono::system_clock::now();
     std::time_t now_time = std::chrono::system_clock::to_time_t(now);
     saveFile << "time: " << std::put_time(std::localtime(&now_time), "%Y-%m-%d %H:%M:%S") << std::endl;
@@ -269,10 +318,14 @@ void saveCalibrationResults(const Params& params, const Eigen::Matrix4f& transfo
     std::cerr << BOLDRED << "[saveCalibrationResults] Colored point cloud is empty!" << RESET << std::endl;
     return;
   }
+  
   std::string outputDir = params.output_path;
   if (outputDir.back() != '/') outputDir += '/';
 
-  std::ofstream outFile(outputDir + "single_calib_result.txt");
+  // Create output directory if it doesn't exist
+  std::filesystem::create_directories(outputDir);
+
+  std::ofstream outFile(outputDir + "calib_result.txt");
   if (outFile.is_open()) 
   {
     outFile << "# FAST-LIVO2 calibration format\n";
@@ -298,23 +351,29 @@ void saveCalibrationResults(const Params& params, const Eigen::Matrix4f& transfo
     outFile << std::setw(10) << transformation(0, 3) << ", " << std::setw(10) << transformation(1, 3) << ", " << std::setw(10) << transformation(2, 3) << "]\n";
 
     outFile.close();
-    std::cout << BOLDYELLOW << "[Result] Single-scene calibration results saved to " << BOLDWHITE << outputDir << "single_calib_result.txt" << RESET << std::endl;
+    std::cout << BOLDYELLOW << "[Result] Single-scene calibration results saved to " << BOLDWHITE << outputDir << "calib_result.txt" << RESET << std::endl;
   } 
   else
   {
-    std::cerr << BOLDRED << "[Error] Failed to open single_calib_result.txt for writing!" << RESET << std::endl;
+    std::cerr << BOLDRED << "[Error] Failed to open calib_result.txt for writing!" << RESET << std::endl;
   }
   
+  // Save colored point cloud
   if (pcl::io::savePCDFileASCII(outputDir + "colored_cloud.pcd", *colored_cloud) == 0) 
   {
     std::cout << BOLDYELLOW << "[Result] Saved colored point cloud to: " << BOLDWHITE << outputDir << "colored_cloud.pcd" << RESET << std::endl;
   } 
   else 
   {
-    std::cerr << BOLDRED << "[Error] Failed to save colored point cloud to " << outputDir << "colored_cloud.pcd" << "!" << RESET << std::endl;
+    std::cerr << BOLDRED << "[Error] Failed to save colored point cloud to " << outputDir << "colored_cloud.pcd" "!" << RESET << std::endl;
   }
  
-  imwrite(outputDir + "qr_detect.png", img_input);
+  // Save detection image
+  if (cv::imwrite(outputDir + "qr_detect.png", img_input)) {
+    std::cout << BOLDYELLOW << "[Result] Saved QR detection image to: " << BOLDWHITE << outputDir << "qr_detect.png" << RESET << std::endl;
+  } else {
+    std::cerr << BOLDRED << "[Error] Failed to save QR detection image!" << RESET << std::endl;
+  }
 }
 
 void sortPatternCenters(pcl::PointCloud<pcl::PointXYZ>::Ptr pc,
@@ -343,7 +402,7 @@ void sortPatternCenters(pcl::PointCloud<pcl::PointXYZ>::Ptr pc,
 
   // --- Sorting based on the local coordinate system of the pattern ---
   // 1. Calculate the centroid of the points
-  Eigen::Vector4f centroid;
+  Eigen::Vector4f centroid = Eigen::Vector4f::Zero();
   pcl::compute3DCentroid(*work_pc, centroid);
   pcl::PointXYZ ref_origin(centroid[0], centroid[1], centroid[2]);
 
@@ -403,7 +462,7 @@ class Square
  
       // Compute candidates centroid
       _center.x = _center.y = _center.z = 0;
-      for (int i = 0; i < candidates.size(); ++i) {
+      for (int i = 0; i < (int)candidates.size(); ++i) {
         _center.x += candidates[i].x;
         _center.y += candidates[i].y;
         _center.z += candidates[i].z;
@@ -424,10 +483,8 @@ class Square
       return _candidates[i];
     }
  
-    // ==================================================================================================
-    // The original is_valid() was too rigid. This version is more robust by checking for two possible
-    // orderings of the side lengths (width-height vs. height-width) after angular sorting.
-    // ==================================================================================================
+    // Robust is_valid(): checks two possible orderings of side lengths
+    // (width-height vs. height-width) after angular sorting.
     bool is_valid() 
     {
       if (_candidates.size() != 4) return false;
@@ -436,10 +493,10 @@ class Square
       for(const auto& p : _candidates) candidates_cloud->push_back(p);
 
       // Check if candidates are at a reasonable distance from their centroid
-      for (int i = 0; i < _candidates.size(); ++i) {
+      for (int i = 0; i < (int)_candidates.size(); ++i) {
         float d = distance(_center, _candidates[i]);
         // Check if distance from center to corner is close to half the diagonal length
-        if (fabs(d - _target_diagonal / 2.) / (_target_diagonal / 2.) > GEOMETRY_TOLERANCE * 2.0) { // Loosened tolerance slightly
+        if (fabs(d - _target_diagonal / 2.) / (_target_diagonal / 2.) > GEOMETRY_TOLERANCE * 2.0) {
           return false;
         }
       }
