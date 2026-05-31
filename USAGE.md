@@ -441,11 +441,3 @@ ros2 launch fast_calib calib_launch.py rviz:=true
 - **OpenCV**: 4.0 or later (with ArUco module)
 - **Operating System**: Linux (tested on Ubuntu 22.04+)
 
----
-
-## Support
-
-For issues or questions:
-- Check the [workflow documentation](workflow.md) for algorithm details
-- Review the [README](README.md) for setup instructions
-- Contact: zhengcr@connect.hku.hk
