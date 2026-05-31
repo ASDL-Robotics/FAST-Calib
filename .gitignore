@@ -1,6 +1,14 @@
-calib_data/*
-output/*
-build/*
-log/*
-install/*
-’
+# ROS 2 / colcon build artifacts
+**/build/
+**/install/
+**/log/
+
+# Calibration runtime data and results (keep .gitkeep placeholders)
+**/calib_data/*
+!**/calib_data/.gitkeep
+**/output/*
+!**/output/.gitkeep
+
+# Python
+**/__pycache__/
+*.pyc

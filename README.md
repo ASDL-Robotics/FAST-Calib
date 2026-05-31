@@ -1,78 +1,74 @@
-# FAST-Calib (ROS 2)
+# FAST-Calib (ROS 2 Monorepo)
 
-## FAST-Calib: LiDAR-Camera Extrinsic Calibration in One Second
+This repository contains two ROS 2 packages for LiDAR-camera extrinsic calibration.
 
-FAST-Calib is an automatic target-based extrinsic calibration tool for LiDAR-camera systems (eg., [FAST-LIVO2](https://github.com/hku-mars/FAST-LIVO2)).
+> [!WARNING]
+> **This is an experimental ROS 2 port.** Not all functionality has been tested
+> end-to-end. The core calibration pipeline (`FAST-Calib`) has been built and
+> verified to compile. The interactive data collection package
+> (`FAST-Calib-Interactive`) and the `distance_filter_tool.py` ROS 2 port are
+> new and have not been validated against real hardware. Use with caution and
+> expect rough edges.
 
-**Key highlights include:**
+---
 
-1. Support solid-state and mechanical LiDAR.
-2. No need for any initial extrinsic parameters.
-3. Achieve highly accurate calibration results **in just one seconds**.
+## Packages
 
-In short, it makes extrinsic calibration as simple as intrinsic calibration.
+### [`FAST-Calib/`](FAST-Calib/)
 
-**Related paper:** 
+The core calibration engine. Processes a pre-recorded ROS 2 bag and a camera
+image to compute the LiDAR-camera extrinsic transformation matrix.
 
-[FAST-Calib: LiDAR-Camera Extrinsic Calibration in One Second](https://www.arxiv.org/pdf/2507.17210)
+- **Type**: `ament_cmake` (C++17)
+- **Executables**: `fast_calib` (single-scene), `multi_fast_calib` (multi-scene)
+- **See**: [`FAST-Calib/README.md`](FAST-Calib/README.md) and [`FAST-Calib/USAGE.md`](FAST-Calib/USAGE.md)
 
-📬 For further assistance or inquiries, please feel free to contact Chunran Zheng at zhengcr@connect.hku.hk.
+### [`FAST-Calib-Interactive/`](FAST-Calib-Interactive/)
 
-<p align="center">
-  <img src="./pics/calib.jpg" width="100%">
-  <font color=#a0a0a0 size=2>Left: Example of Mid360 LiDAR calibration. Right: Point cloud colored with the calibrated extrinsics.</font>
-</p>
+An interactive CLI front end for data collection and calibration orchestration.
+Subscribes to live LiDAR and camera topics, records scenes to disk, and invokes
+the `FAST-Calib` executables. Does not reimplement any calibration logic.
 
-<p align="center">
-  <img src="./pics/all_lidar_type.jpg" width="100%">
-  <font color=#a0a0a0 size=2>Circular hole extraction supports multiple LiDAR models.</font>
-</p>
+- **Type**: `ament_python`
+- **Entry point**: `ros2 run fast_calib_interactive interactive_calib`
+- **See**: [`FAST-Calib-Interactive/README.md`](FAST-Calib-Interactive/README.md)
 
-## 1. Prerequisites
+---
 
-PCL>=1.8, OpenCV>=4.0.
+## Build
 
-## 2. Run our examples
-
-1. Prepare the static acquisition data in the `calib_data` folder (see [Single-scene Calibration Sample Data](https://drive.google.com/drive/folders/1W87Dx3MUuPhTpCLvaavWqNUJZV03yU6L?usp=drive_link) from Mid360, Avia and Ouster, and [Multi-scene Calibration Sample Data](https://drive.google.com/drive/folders/1g__plgFqp5tsk-TY7Ioh4RXru62AdLmr?usp=drive_link) from Avia):
-- rosbag containing point cloud messages
-- corresponding image
-
-2. Run the single-scene calibration process:
 ```bash
+cd ~/Workspaces/fastcal_ws
+colcon build --packages-select fast_calib fast_calib_interactive
+source install/setup.bash
+```
+
+## Quick Start
+
+**Offline (bag + image already collected):**
+```bash
+# Edit FAST-Calib/config/qr_params.yaml with your paths and intrinsics
 ros2 launch fast_calib calib_launch.py
 ```
 
-3. After completing Step 2 for at least three different scenes, you can perform multi-scene joint calibration:
+**Interactive (collect from live sensors):**
 ```bash
-ros2 launch fast_calib multi_calib.launch.py
+ros2 run fast_calib_interactive interactive_calib
 ```
 
-## 3. Run on your own sensor suite
+---
 
-1. Customize the calibration target in the image below, with the CAD model available [here](https://drive.google.com/file/d/1hdC8xGCHNP47a-wSLPyjr_tpOeynNFEG/view?usp=sharing).
-2. Collect data from three scenes, with placement illustrated below, and record them into the corresponding rosbags.
-3. If you are using Livox ROS Driver 2, ensure points are output in `PointCloud2` format (set `xfer_format = 0` in the driver launch file).
-4. Provide the intrinsic matrix in `qr_params.yaml`.
-5. Set the distance filter in `qr_params.yaml` to frame the calibration board (extra points are acceptable).
-6. Calibrate now!
+## Prerequisites
 
-💡 **Note:** You can run `scripts/distance_filter_tool.py` to quickly obtain suitable filter parameters.
-<p align="center">
-  <img src="./pics/calibration_target.jpg" width="100%">
-  <font color=#a0a0a0 size=2>Left: Actual calibration target | Right: Technical drawing with annotated dimensions.</font>
-</p>
-<p align="center">
-  <img src="./pics/multi-scene.jpg" width="100%">
-  <font color=#a0a0a0 size=2>Placement of the calibration target for multi-scene data collection: (a) facing forward, (b) oriented to the right, (c) oriented to the left.</font>
-</p>
+- ROS 2 Jazzy or later
+- PCL ≥ 1.10
+- OpenCV ≥ 4.0 (with ArUco module)
+- Python 3: `rosbag2_py`, `sensor_msgs_py`, `open3d`, `numpy`, `cv_bridge`
 
-## 4. Appendix
+---
 
-The calibration target design is based on the [velo2cam_calibration](https://github.com/beltransen/velo2cam_calibration).
+## Upstream
 
-For further details on the algorithm workflow, see [this document](https://github.com/xuankuzcr/FAST-Calib/blob/main/workflow.md).
-
-## 5. Acknowledgments
-
-Special thanks to [Jiaming Xu](https://github.com/Xujiaming1) for his support, [Haotian Li](https://github.com/luo-xue) for the equipment, and the [velo2cam_calibration](https://github.com/beltransen/velo2cam_calibration) algorithm.
+Based on [FAST-Calib](https://github.com/xuankuzcr/FAST-Calib) by Chunran Zheng
+(HKU MARS Lab). See the related paper:
+[FAST-Calib: LiDAR-Camera Extrinsic Calibration in One Second](https://www.arxiv.org/pdf/2507.17210).
