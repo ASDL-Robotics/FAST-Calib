@@ -20,13 +20,14 @@ from typing import Any, Dict, Optional
 
 import yaml
 
-_ROOT_NODE = 'fast_calib'
+_SINGLE_NODE = 'mono_qr_pattern'
+_MULTI_NODE = 'multi_fast_calib'
 _PARAMS_KEY = 'ros__parameters'
 
 
-def _wrap(params: Dict[str, Any]) -> Dict[str, Any]:
+def _wrap(params: Dict[str, Any], node_name: str = _SINGLE_NODE) -> Dict[str, Any]:
     """Wrap a flat params dict in the ROS 2 YAML node structure."""
-    return {_ROOT_NODE: {_PARAMS_KEY: params}}
+    return {node_name: {_PARAMS_KEY: params}}
 
 
 class ConfigManager:
@@ -43,17 +44,20 @@ class ConfigManager:
             raise FileNotFoundError(f'Config file not found: {self.config_path}')
         with self.config_path.open('r') as handle:
             self._data = yaml.safe_load(handle) or {}
-        if _ROOT_NODE not in self._data or _PARAMS_KEY not in self._data[_ROOT_NODE]:
+        # Accept any single top-level node name (mono_qr_pattern, multi_fast_calib, etc.)
+        node_keys = [k for k in self._data if _PARAMS_KEY in (self._data[k] or {})]
+        if not node_keys:
             raise ValueError(
                 f'Unexpected config structure in {self.config_path}; '
-                f'expected top-level "{_ROOT_NODE}" -> "{_PARAMS_KEY}".'
+                f'expected a top-level node name with a "{_PARAMS_KEY}" block.'
             )
+        self._node_name = node_keys[0]
         return self._data
 
     @property
     def params(self) -> Dict[str, Any]:
         """Return the editable ``ros__parameters`` mapping."""
-        return self._data[_ROOT_NODE][_PARAMS_KEY]
+        return self._data[self._node_name][_PARAMS_KEY]
 
     def get(self, key: str, default: Any = None) -> Any:
         return self.params.get(key, default)
@@ -77,6 +81,7 @@ class ConfigManager:
         twin = ConfigManager.__new__(ConfigManager)
         twin.config_path = self.config_path
         twin._data = copy.deepcopy(self._data)
+        twin._node_name = self._node_name
         return twin
 
     # ------------------------------------------------------------------
@@ -95,6 +100,7 @@ class ConfigManager:
         lidar_topic: str,
         save_path: str | Path,
         filter_bounds: Optional[Dict[str, float]] = None,
+        node_name: str = _SINGLE_NODE,
     ) -> 'ConfigManager':
         """Construct a ConfigManager from live intrinsics and target geometry.
 
@@ -150,6 +156,7 @@ class ConfigManager:
 
         instance = cls.__new__(cls)
         instance.config_path = Path(save_path)
-        instance._data = _wrap(params)
+        instance._node_name = node_name
+        instance._data = _wrap(params, node_name)
         instance.save(save_path)
         return instance

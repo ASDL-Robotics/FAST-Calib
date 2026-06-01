@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import yaml
 
-from .config_manager import ConfigManager
+from .config_manager import ConfigManager, _MULTI_NODE
 from .sensor_config import CameraConfig, SensorConfig
 
 
@@ -142,6 +142,7 @@ class WorkflowManager:
             output_path=str(cam_output),
             lidar_topic=lidar.topic,
             save_path=save_path,
+            node_name=_MULTI_NODE,
         )
 
         rc = self._run([
