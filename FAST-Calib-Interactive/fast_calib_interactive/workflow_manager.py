@@ -92,6 +92,7 @@ class WorkflowManager:
             output_path=str(cam_output),
             lidar_topic=lidar.topic,
             save_path=save_path,
+            filter_bounds=self.sensor_config.filter.as_dict(),
         )
         return cfg.config_path
 
@@ -142,6 +143,7 @@ class WorkflowManager:
             output_path=str(cam_output),
             lidar_topic=lidar.topic,
             save_path=save_path,
+            filter_bounds=self.sensor_config.filter.as_dict(),
             node_name=_MULTI_NODE,
         )
 

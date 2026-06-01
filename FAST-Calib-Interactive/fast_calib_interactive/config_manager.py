@@ -127,9 +127,9 @@ class ConfigManager:
             Defaults to a wide passthrough if omitted.
         """
         defaults: Dict[str, float] = {
-            'x_min': -10.0, 'x_max': 10.0,
-            'y_min': -10.0, 'y_max': 10.0,
-            'z_min': -10.0, 'z_max': 10.0,
+            'x_min': 0.5,  'x_max': 3.0,
+            'y_min': -1.5, 'y_max': 1.5,
+            'z_min': -1.5, 'z_max': 1.5,
         }
         bounds = {**defaults, **(filter_bounds or {})}
 

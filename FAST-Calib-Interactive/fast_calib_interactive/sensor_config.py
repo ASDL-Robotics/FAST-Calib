@@ -30,13 +30,23 @@ target:
   delta_height_circles: 0.3
   circle_radius: 0.10
   min_detected_markers: 3
+
+# Optional — tighten these to frame your calibration target.
+# Defaults keep everything within 3 m of the sensor origin.
+filter:
+  x_min: 0.5
+  x_max: 3.0
+  y_min: -1.5
+  y_max: 1.5
+  z_min: -1.5
+  z_max: 1.5
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -51,6 +61,26 @@ _TARGET_REQUIRED = {
     'delta_height_circles',
     'circle_radius',
     'min_detected_markers',
+}
+_FILTER_KEYS = {'x_min', 'x_max', 'y_min', 'y_max', 'z_min', 'z_max'}
+_FILTER_DEFAULTS: Dict[str, float] = {
+    'x_min': 0.5,  'x_max': 3.0,
+    'y_min': -1.5, 'y_max': 1.5,
+    'z_min': -1.5, 'z_max': 1.5,
+}_TARGET_REQUIRED = {
+    'marker_size',
+    'delta_width_qr_center',
+    'delta_height_qr_center',
+    'delta_width_circles',
+    'delta_height_circles',
+    'circle_radius',
+    'min_detected_markers',
+}
+_FILTER_KEYS = {'x_min', 'x_max', 'y_min', 'y_max', 'z_min', 'z_max'}
+_FILTER_DEFAULTS: Dict[str, float] = {
+    'x_min': 0.5,  'x_max': 3.0,
+    'y_min': -1.5, 'y_max': 1.5,
+    'z_min': -1.5, 'z_max': 1.5,
 }
 
 
@@ -96,6 +126,25 @@ class TargetConfig:
         }
 
 
+@dataclass(frozen=True)
+class FilterConfig:
+    """Distance filter bounds for the LiDAR passthrough filter."""
+
+    x_min: float = 0.5
+    x_max: float = 3.0
+    y_min: float = -1.5
+    y_max: float = 1.5
+    z_min: float = -1.5
+    z_max: float = 1.5
+
+    def as_dict(self) -> Dict[str, float]:
+        return {
+            'x_min': self.x_min, 'x_max': self.x_max,
+            'y_min': self.y_min, 'y_max': self.y_max,
+            'z_min': self.z_min, 'z_max': self.z_max,
+        }
+
+
 @dataclass
 class SensorConfig:
     """Parsed and validated contents of sensors.yaml."""
@@ -103,11 +152,14 @@ class SensorConfig:
     cameras: List[CameraConfig]
     lidars: List[LidarConfig]
     target: TargetConfig
+    filter: FilterConfig = None  # type: ignore[assignment]
 
     # Convenience lookup maps built on construction.
     _lidar_map: Dict[str, LidarConfig] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
+        if self.filter is None:
+            self.filter = FilterConfig()
         self._lidar_map = {l.name: l for l in self.lidars}
 
     def lidar_for(self, camera: CameraConfig) -> LidarConfig:
@@ -162,4 +214,9 @@ class SensorConfig:
             raise ValueError(f'target section is missing required keys: {missing}')
         target = TargetConfig(**{k: raw_target[k] for k in _TARGET_REQUIRED})
 
-        return cls(cameras=cameras, lidars=lidars, target=target)
+        # --- filter (optional) ---
+        raw_filter = raw.get('filter', {})
+        filter_bounds = {**_FILTER_DEFAULTS, **{k: float(raw_filter[k]) for k in _FILTER_KEYS if k in raw_filter}}
+        filter_cfg = FilterConfig(**filter_bounds)
+
+        return cls(cameras=cameras, lidars=lidars, target=target, filter=filter_cfg)
