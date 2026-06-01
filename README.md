@@ -1,4 +1,4 @@
-# FAST-Calib (ROS 2 Monorepo)
+# FAST-Calib
 
 This repository contains two ROS 2 packages for LiDAR-camera extrinsic calibration.
 
