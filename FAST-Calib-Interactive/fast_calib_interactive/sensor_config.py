@@ -67,20 +67,6 @@ _FILTER_DEFAULTS: Dict[str, float] = {
     'x_min': 0.5,  'x_max': 3.0,
     'y_min': -1.5, 'y_max': 1.5,
     'z_min': -1.5, 'z_max': 1.5,
-}_TARGET_REQUIRED = {
-    'marker_size',
-    'delta_width_qr_center',
-    'delta_height_qr_center',
-    'delta_width_circles',
-    'delta_height_circles',
-    'circle_radius',
-    'min_detected_markers',
-}
-_FILTER_KEYS = {'x_min', 'x_max', 'y_min', 'y_max', 'z_min', 'z_max'}
-_FILTER_DEFAULTS: Dict[str, float] = {
-    'x_min': 0.5,  'x_max': 3.0,
-    'y_min': -1.5, 'y_max': 1.5,
-    'z_min': -1.5, 'z_max': 1.5,
 }
 
 
