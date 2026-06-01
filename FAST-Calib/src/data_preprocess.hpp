@@ -73,7 +73,7 @@ public:
         rosbag2_cpp::readers::SequentialReader reader;
         rosbag2_storage::StorageOptions storage_options;
         storage_options.uri = bag_path;
-        storage_options.storage_id = "sqlite3";
+        storage_options.storage_id = "mcap";
 
         rosbag2_cpp::ConverterOptions converter_options;
         converter_options.input_serialization_format = "cdr";

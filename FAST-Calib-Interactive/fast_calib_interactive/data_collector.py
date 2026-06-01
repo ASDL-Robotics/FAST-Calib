@@ -186,13 +186,11 @@ class MultiCameraSceneCollector(Node):
     def _open_bag_writer(self) -> rosbag2_py.SequentialWriter:
         writer = rosbag2_py.SequentialWriter()
         writer.open(
-            rosbag2_py.StorageOptions(uri=str(self.bag_path), storage_id='sqlite3'),
-            rosbag2_py.ConverterOptions(
-                input_serialization_format='cdr',
-                output_serialization_format='cdr',
-            ),
+            rosbag2_py.StorageOptions(uri=str(self.bag_path), storage_id='mcap'),
+            rosbag2_py.ConverterOptions('', ''),
         )
         writer.create_topic(rosbag2_py.TopicMetadata(
+            id=0,
             name=self.lidar_topic,
             type='sensor_msgs/msg/PointCloud2',
             serialization_format='cdr',
