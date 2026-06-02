@@ -100,8 +100,9 @@ class WorkflowManager:
     # --- calibration runs -------------------------------------------------
 
     # Timeout (seconds) for a single fast_calib subprocess before it is
-    # considered hung and killed. Override by subclassing or monkeypatching.
-    CALIBRATION_TIMEOUT: int = 30
+    # considered hung and killed. 90 s accounts for up to 30 s of debug
+    # cloud publishing after a failure plus processing time.
+    CALIBRATION_TIMEOUT: int = 90
 
     @staticmethod
     def _run(cmd: List[str], timeout: int = 30) -> int:
