@@ -443,41 +443,68 @@ public:
             seg.setMethodType(pcl::SAC_RANSAC);
             seg.setDistanceThreshold(0.01);
             seg.setMaxIterations(1000);
+            seg.setRadiusLimits(circle_radius_ - 0.03, circle_radius_ + 0.03);
             seg.setInputCloud(cluster);
             seg.segment(*inliers, *coefficients);
     
-            if (inliers->indices.size() > 0) 
+            if (inliers->indices.empty())
             {
-                double error = 0.0;
-                for (const auto& idx : inliers->indices) 
-                {
-                    double dx = cluster->points[idx].x - coefficients->values[0];
-                    double dy = cluster->points[idx].y - coefficients->values[1];
-                    double distance = sqrt(dx * dx + dy * dy) - circle_radius_;
-                    error += abs(distance);
-                }
-                error /= inliers->indices.size();
-    
-                if (error < 0.025) 
-                {
-                    pcl::PointXYZ center_point;
-                    center_point.x = coefficients->values[0];
-                    center_point.y = coefficients->values[1];
-                    center_point.z = 0.0;
-                    center_z0_cloud_->push_back(center_point);
-
-                    Eigen::Vector3d aligned_point(center_point.x, center_point.y, center_point.z + average_z);
-                    Eigen::Vector3d original_point = R_inv * aligned_point;
-
-                    pcl::PointXYZ center_point_origin;
-                    center_point_origin.x = original_point.x();
-                    center_point_origin.y = original_point.y();
-                    center_point_origin.z = original_point.z();
-                    center_cloud->points.push_back(center_point_origin);
-                }
+                RCLCPP_DEBUG(node_->get_logger(),
+                    "[LiDAR] Cluster %zu (%zu pts): RANSAC found no circle within radius "
+                    "limits [%.3f, %.3f] m — skipping.",
+                    i, cluster->size(),
+                    circle_radius_ - 0.03, circle_radius_ + 0.03);
+                continue;
             }
+
+            double fitted_radius = coefficients->values[2];
+            double error = 0.0;
+            for (const auto& idx : inliers->indices) 
+            {
+                double dx = cluster->points[idx].x - coefficients->values[0];
+                double dy = cluster->points[idx].y - coefficients->values[1];
+                double distance = sqrt(dx * dx + dy * dy) - circle_radius_;
+                error += std::abs(distance);
+            }
+            error /= inliers->indices.size();
+
+            if (error >= 0.025)
+            {
+                RCLCPP_DEBUG(node_->get_logger(),
+                    "[LiDAR] Cluster %zu (%zu pts): circle fit rejected — "
+                    "mean radius error %.4f m >= 0.025 m threshold "
+                    "(fitted radius %.3f m, expected %.3f m, center (%.3f, %.3f)).",
+                    i, cluster->size(), error,
+                    fitted_radius, circle_radius_,
+                    coefficients->values[0], coefficients->values[1]);
+                continue;
+            }
+
+            RCLCPP_DEBUG(node_->get_logger(),
+                "[LiDAR] Cluster %zu (%zu pts): circle accepted — "
+                "fitted radius %.3f m, mean error %.4f m, center (%.3f, %.3f).",
+                i, cluster->size(), fitted_radius, error,
+                coefficients->values[0], coefficients->values[1]);
+
+            pcl::PointXYZ center_point;
+            center_point.x = coefficients->values[0];
+            center_point.y = coefficients->values[1];
+            center_point.z = 0.0;
+            center_z0_cloud_->push_back(center_point);
+
+            Eigen::Vector3d aligned_point(center_point.x, center_point.y, center_point.z + average_z);
+            Eigen::Vector3d original_point = R_inv * aligned_point;
+
+            pcl::PointXYZ center_point_origin;
+            center_point_origin.x = original_point.x();
+            center_point_origin.y = original_point.y();
+            center_point_origin.z = original_point.z();
+            center_cloud->points.push_back(center_point_origin);
         }
-    }
+
+        RCLCPP_INFO(node_->get_logger(),
+            "[LiDAR] Circle fitting complete: %zu/%zu clusters accepted as circles.",
+            center_z0_cloud_->size(), cluster_indices.size());
 
     // Accessors for intermediate result clouds
     pcl::PointCloud<Common::Point>::Ptr getFilteredCloud() const { return filtered_cloud_; }

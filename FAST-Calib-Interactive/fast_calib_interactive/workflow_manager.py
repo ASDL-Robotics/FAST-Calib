@@ -98,19 +98,36 @@ class WorkflowManager:
 
     # --- calibration runs -------------------------------------------------
 
+    # Timeout (seconds) for a single fast_calib subprocess before it is
+    # considered hung and killed. Override by subclassing or monkeypatching.
+    CALIBRATION_TIMEOUT: int = 30
+
     @staticmethod
-    def _run(cmd: List[str]) -> int:
-        """Run a subprocess, streaming output, returning its exit code."""
+    def _run(cmd: List[str], timeout: int = 30) -> int:
+        """Run a subprocess, streaming output, returning its exit code.
+
+        Returns 1 if the process times out or is interrupted.
+        """
         print(f'\n$ {" ".join(cmd)}\n')
-        return subprocess.run(cmd, check=False).returncode
+        try:
+            return subprocess.run(cmd, check=False, timeout=timeout).returncode
+        except subprocess.TimeoutExpired:
+            print(f'\n  ✗ Calibration process timed out after {timeout}s and was killed.')
+            return 1
+        except KeyboardInterrupt:
+            print('\n  Interrupted.')
+            return 1
 
     def run_single_scene(self, scene: PairScene) -> bool:
         """Run single-scene calibration for one camera-LiDAR pair."""
         cfg_path = self._build_config(scene)
-        rc = self._run([
-            'ros2', 'run', 'fast_calib', 'fast_calib',
-            '--ros-args', '--params-file', str(cfg_path),
-        ])
+        rc = self._run(
+            [
+                'ros2', 'run', 'fast_calib', 'fast_calib',
+                '--ros-args', '--params-file', str(cfg_path),
+            ],
+            timeout=self.CALIBRATION_TIMEOUT,
+        )
         return rc == 0
 
     def run_multi_scene(self, camera: CameraConfig) -> bool:
@@ -147,10 +164,13 @@ class WorkflowManager:
             node_name=_MULTI_NODE,
         )
 
-        rc = self._run([
-            'ros2', 'run', 'fast_calib', 'multi_fast_calib',
-            '--ros-args', '--params-file', str(save_path),
-        ])
+        rc = self._run(
+            [
+                'ros2', 'run', 'fast_calib', 'multi_fast_calib',
+                '--ros-args', '--params-file', str(save_path),
+            ],
+            timeout=self.CALIBRATION_TIMEOUT,
+        )
         return rc == 0
 
     # --- inter-camera transforms ------------------------------------------

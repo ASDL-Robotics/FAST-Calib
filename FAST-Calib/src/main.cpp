@@ -28,14 +28,45 @@ int main(int argc, char **argv)
     DataPreprocessPtr dataPreprocessPtr;
     dataPreprocessPtr.reset(new DataPreprocess(params));
 
+    // Abort early if data loading failed
+    if (!dataPreprocessPtr->ok_)
+    {
+        RCLCPP_ERROR(node->get_logger(), "[Main] Data loading failed. Aborting.");
+        rclcpp::shutdown();
+        return 1;
+    }
+
     // Read image and point cloud
     cv::Mat img_input = dataPreprocessPtr->img_input_;
     pcl::PointCloud<Common::Point>::Ptr cloud_input = dataPreprocessPtr->cloud_input_;
+
+    if (img_input.empty())
+    {
+        RCLCPP_ERROR(node->get_logger(), "[Main] Image is empty after loading. Aborting.");
+        rclcpp::shutdown();
+        return 1;
+    }
+    if (cloud_input->empty())
+    {
+        RCLCPP_ERROR(node->get_logger(), "[Main] Point cloud is empty after loading. Aborting.");
+        rclcpp::shutdown();
+        return 1;
+    }
     
     // Detect QR codes
     pcl::PointCloud<pcl::PointXYZ>::Ptr qr_center_cloud(new pcl::PointCloud<pcl::PointXYZ>);
     qr_center_cloud->reserve(4);
     qrDetectPtr->detect_qr(img_input, qr_center_cloud);
+
+    if (qr_center_cloud->size() != TARGET_NUM_CIRCLES)
+    {
+        RCLCPP_ERROR(node->get_logger(),
+            "[Main] QR detection failed: found %zu circle centers, expected %d. "
+            "Check image path, marker IDs, min_detected_markers, and target geometry params.",
+            qr_center_cloud->size(), TARGET_NUM_CIRCLES);
+        rclcpp::shutdown();
+        return 1;
+    }
 
     // Detect LiDAR data
     pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_center_cloud(new pcl::PointCloud<pcl::PointXYZ>);
@@ -52,10 +83,23 @@ int main(int argc, char **argv)
             break;
 
         default:
-            std::cerr << BOLDYELLOW 
-                    << "[Main] Unknown LiDAR type." 
-                    << RESET << std::endl;
-            break;
+            RCLCPP_ERROR(node->get_logger(), "[Main] Unknown LiDAR type. Aborting.");
+            rclcpp::shutdown();
+            return 1;
+    }
+
+    if (lidar_center_cloud->size() != TARGET_NUM_CIRCLES)
+    {
+        RCLCPP_ERROR(node->get_logger(),
+            "[Main] LiDAR detection failed: found %zu circle centers, expected %d. "
+            "Check filter bounds (x/y/z_min/max), circle_radius, and delta_*_circles params. "
+            "Filtered cloud: %zu pts, plane cloud: %zu pts, edge cloud: %zu pts.",
+            lidar_center_cloud->size(), TARGET_NUM_CIRCLES,
+            lidarDetectPtr->getFilteredCloud()->size(),
+            lidarDetectPtr->getPlaneCloud()->size(),
+            lidarDetectPtr->getEdgeCloud()->size());
+        rclcpp::shutdown();
+        return 1;
     }
 
     // Sort detected circle centers from QR and LiDAR
@@ -63,6 +107,15 @@ int main(int argc, char **argv)
     pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_centers(new pcl::PointCloud<pcl::PointXYZ>);
     sortPatternCenters(qr_center_cloud, qr_centers, "camera");
     sortPatternCenters(lidar_center_cloud, lidar_centers, "lidar");
+
+    if (qr_centers->size() != TARGET_NUM_CIRCLES || lidar_centers->size() != TARGET_NUM_CIRCLES)
+    {
+        RCLCPP_ERROR(node->get_logger(),
+            "[Main] Sorting failed: qr_centers=%zu, lidar_centers=%zu (expected %d each). Aborting.",
+            qr_centers->size(), lidar_centers->size(), TARGET_NUM_CIRCLES);
+        rclcpp::shutdown();
+        return 1;
+    }
 
     // Save intermediate results: sorted LiDAR and QR circle centers
     saveTargetHoleCenters(lidar_centers, qr_centers, params);
@@ -95,12 +148,20 @@ int main(int argc, char **argv)
     auto colored_cloud_pub = node->create_publisher<sensor_msgs::msg::PointCloud2>("colored_cloud", 1);
     auto aligned_lidar_centers_pub = node->create_publisher<sensor_msgs::msg::PointCloud2>("aligned_lidar_centers", 1);
 
-    // Main loop
-    rclcpp::Rate rate(1);
-    while (rclcpp::ok()) 
+    if (!DEBUG)
     {
-      if (DEBUG) 
-      {
+        RCLCPP_INFO(node->get_logger(), "[Main] Calibration complete. Exiting.");
+        rclcpp::shutdown();
+        return 0;
+    }
+
+    // DEBUG: publish intermediate clouds for visualization in RViz.
+    // Spins for up to 60 seconds then exits cleanly.
+    RCLCPP_INFO(node->get_logger(), "[Main] DEBUG mode: publishing results for 60 s. Press Ctrl-C to exit sooner.");
+    rclcpp::Rate rate(1);
+    auto deadline = node->get_clock()->now() + rclcpp::Duration::from_seconds(60.0);
+    while (rclcpp::ok() && node->get_clock()->now() < deadline)
+    {
         // Publish QR detection results
         sensor_msgs::msg::PointCloud2 qr_centers_msg;
         pcl::toROSMsg(*qr_centers, qr_centers_msg);
@@ -151,7 +212,6 @@ int main(int argc, char **argv)
         pcl::toROSMsg(*colored_cloud, colored_cloud_msg);
         colored_cloud_msg.header = qr_centers_msg.header;
         colored_cloud_pub->publish(colored_cloud_msg);
-      }
       
       rclcpp::spin_some(node);
       rate.sleep();

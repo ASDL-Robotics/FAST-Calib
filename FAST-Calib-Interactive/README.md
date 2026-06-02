@@ -154,11 +154,59 @@ calibrated. Results are saved to `<output>/inter_camera/`.
 
 ## Notes
 
-- The distance filter (`x_min`/`x_max`/...) defaults to a wide passthrough.
-  Use `FAST-Calib/scripts/distance_filter_tool.py` to determine tighter bounds,
-  then add them to the generated `qr_params.yaml` in `$XDG_STATE_HOME` or pass
-  them as ROS 2 parameter overrides.
+- The distance filter (`x_min`/`x_max`/...) defaults to ±3 m around the sensor.
+  Tighten these in `sensors.yaml` under a `filter:` section to match your setup:
+  ```yaml
+  filter:
+    x_min: 1.0
+    x_max: 4.0
+    y_min: -2.0
+    y_max: 2.0
+    z_min: -1.0
+    z_max: 1.0
+  ```
+  Or use `FAST-Calib/scripts/distance_filter_tool.py` to determine suitable values.
 - `circle_center_record.txt` accumulates in `result/<camera>/` across
   single-scene runs. Multi-scene calibration reads it from there.
 - Each single-scene run overwrites `calib_result.txt` for that camera.
   Multi-scene writes `multi_calib_result.txt` separately.
+- If a calibration subprocess takes longer than 30 s it is killed automatically
+  and treated as a failure. This prevents the interactive session from hanging.
+
+## Troubleshooting
+
+### Calibration fails with no obvious error
+
+Enable debug logging to see per-cluster rejection reasons from the LiDAR detection pipeline:
+
+```bash
+ros2 run fast_calib fast_calib \
+  --ros-args --params-file /path/to/params.yaml \
+  --log-level debug
+```
+
+Or to enable debug only for the calibration node without flooding other components:
+
+```bash
+ros2 run fast_calib fast_calib \
+  --ros-args --params-file /path/to/params.yaml \
+  --log-level mono_qr_pattern:=debug
+```
+
+At debug level you will see a line for every edge cluster explaining why it was rejected:
+
+```
+[mono_qr_pattern]: [LiDAR] Cluster 0 (87 pts): RANSAC found no circle within radius limits [0.070, 0.130] m — skipping.
+[mono_qr_pattern]: [LiDAR] Cluster 1 (63 pts): circle fit rejected — mean radius error 0.0412 m >= 0.025 m threshold (fitted radius 0.143 m, expected 0.100 m, center (0.312, -0.184)).
+[mono_qr_pattern]: [LiDAR] Cluster 2 (91 pts): circle accepted — fitted radius 0.102 m, mean error 0.0081 m, center (0.204, 0.197).
+[mono_qr_pattern]: [LiDAR] Circle fitting complete: 3/5 clusters accepted as circles.
+```
+
+**Common causes and fixes:**
+
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| All clusters rejected — RANSAC no circle | Filter bounds too wide, too few edge points on holes | Tighten `filter` bounds in `sensors.yaml` |
+| Clusters rejected — radius error too high | `circle_radius` param doesn't match physical target | Measure and update `circle_radius` in `sensors.yaml` |
+| 0 clusters found | Edge extraction failed (empty plane cloud) | Check `x/y/z_min/max` — VoxelGrid overflows if bounds span > ~5 m |
+| Fewer than 4 circles accepted | Partial occlusion or target too far | Move target closer, ensure all 4 holes are in LiDAR FOV |

@@ -194,6 +194,8 @@ public:
             RCLCPP_WARN(rclcpp::get_logger("data_preprocess"), 
                        "No points loaded! Check your rosbag and topic configuration.");
         }
+
+        ok_ = true;
     }
 };
 
