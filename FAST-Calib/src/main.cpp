@@ -10,6 +10,55 @@ which is included as part of this source code package.
 #include "data_preprocess.hpp"
 #include <rclcpp/rclcpp.hpp>
 
+// ---------------------------------------------------------------------------
+// saveDebugClouds: write all intermediate clouds to <output>/debug/ so they
+// are available for post-mortem inspection regardless of whether calibration
+// succeeded or failed.
+// ---------------------------------------------------------------------------
+static void saveDebugClouds(
+    const std::string& output_path,
+    const LidarDetectPtr& lidarDetectPtr,
+    const pcl::PointCloud<pcl::PointXYZ>::Ptr& qr_centers,
+    const pcl::PointCloud<pcl::PointXYZ>::Ptr& lidar_centers,
+    const cv::Mat& qr_image)
+{
+    std::string debug_dir = output_path;
+    if (debug_dir.back() != '/') debug_dir += '/';
+    debug_dir += "debug/";
+    std::filesystem::create_directories(debug_dir);
+
+    auto save_pcd = [&](const std::string& name, auto cloud) {
+        if (!cloud || cloud->empty()) {
+            std::cout << BOLDYELLOW << "[Debug] " << name << ": empty, skipping." << RESET << std::endl;
+            return;
+        }
+        std::string path = debug_dir + name;
+        if (pcl::io::savePCDFileBinary(path, *cloud) == 0)
+            std::cout << BOLDGREEN << "[Debug] Saved " << name
+                      << " (" << cloud->size() << " pts) → " << path << RESET << std::endl;
+        else
+            std::cerr << BOLDRED << "[Debug] Failed to save " << name << RESET << std::endl;
+    };
+
+    save_pcd("filtered_cloud.pcd",   lidarDetectPtr->getFilteredCloud());
+    save_pcd("plane_cloud.pcd",      lidarDetectPtr->getPlaneCloud());
+    save_pcd("edge_cloud.pcd",       lidarDetectPtr->getEdgeCloud());
+    save_pcd("aligned_cloud.pcd",    lidarDetectPtr->getAlignedCloud());
+    save_pcd("center_z0_cloud.pcd",  lidarDetectPtr->getCenterZ0Cloud());
+    save_pcd("lidar_centers.pcd",    lidar_centers);
+    save_pcd("qr_centers.pcd",       qr_centers);
+
+    if (!qr_image.empty()) {
+        std::string img_path = debug_dir + "qr_detect.png";
+        if (cv::imwrite(img_path, qr_image))
+            std::cout << BOLDGREEN << "[Debug] Saved qr_detect.png → " << img_path << RESET << std::endl;
+        else
+            std::cerr << BOLDRED << "[Debug] Failed to save qr_detect.png" << RESET << std::endl;
+    }
+
+    std::cout << BOLDCYAN << "[Debug] Intermediate clouds saved to: " << debug_dir << RESET << std::endl;
+}
+
 int main(int argc, char **argv) 
 {
     rclcpp::init(argc, argv);
@@ -64,6 +113,10 @@ int main(int argc, char **argv)
             "[Main] QR detection failed: found %zu circle centers, expected %d. "
             "Check image path, marker IDs, min_detected_markers, and target geometry params.",
             qr_center_cloud->size(), TARGET_NUM_CIRCLES);
+        // Save whatever debug clouds exist so far (LiDAR not yet run — all empty)
+        saveDebugClouds(params.output_path, lidarDetectPtr, qr_center_cloud,
+                        pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>),
+                        qrDetectPtr->imageCopy_);
         rclcpp::shutdown();
         return 1;
     }
@@ -98,6 +151,9 @@ int main(int argc, char **argv)
             lidarDetectPtr->getFilteredCloud()->size(),
             lidarDetectPtr->getPlaneCloud()->size(),
             lidarDetectPtr->getEdgeCloud()->size());
+        // Save all intermediate clouds — this is the most useful failure case to inspect
+        saveDebugClouds(params.output_path, lidarDetectPtr, qr_center_cloud,
+                        lidar_center_cloud, qrDetectPtr->imageCopy_);
         rclcpp::shutdown();
         return 1;
     }
@@ -119,6 +175,10 @@ int main(int argc, char **argv)
 
     // Save intermediate results: sorted LiDAR and QR circle centers
     saveTargetHoleCenters(lidar_centers, qr_centers, params);
+
+    // Save debug clouds to disk (always — useful for validation even on success)
+    saveDebugClouds(params.output_path, lidarDetectPtr, qr_centers,
+                    lidar_centers, qrDetectPtr->imageCopy_);
 
     // Calculate extrinsic parameters
     Eigen::Matrix4f transformation;

@@ -176,6 +176,36 @@ calibrated. Results are saved to `<output>/inter_camera/`.
 
 ## Troubleshooting
 
+### Inspect intermediate clouds after a failure
+
+Every calibration run — successful or failed — writes intermediate point clouds to `<output>/debug/`:
+
+| File | Contents | Useful for |
+|------|----------|------------|
+| `filtered_cloud.pcd` | Point cloud after passthrough filter (and voxel for solid-state) | Checking filter bounds — should contain only the target area |
+| `plane_cloud.pcd` | Inliers of the fitted dominant plane | Verifying the target board was extracted cleanly |
+| `edge_cloud.pcd` | Edge/boundary points on the Z=0 aligned plane | Should show the 4 circle outlines; if sparse or missing, plane extraction failed |
+| `aligned_cloud.pcd` | Plane cloud rotated to Z=0 | Visual sanity check for the plane alignment step |
+| `center_z0_cloud.pcd` | Fitted circle centers in the Z=0 plane | Should have exactly 4 points; shows which circles RANSAC found |
+| `lidar_centers.pcd` | Final accepted circle centers (original sensor frame) | Empty or fewer than 4 means LiDAR detection failed |
+| `qr_centers.pcd` | QR-detected circle centers (camera frame) | Empty means QR detection failed |
+| `qr_detect.png` | Camera image with ArUco marker detections drawn | Check if markers were found and axes look plausible |
+
+Load them in RViz2 (`Add → PointCloud2 → From File`) or view with `pcl_viewer`:
+
+```bash
+pcl_viewer ~/.local/state/ros/fast_calib/result/debug/filtered_cloud.pcd \
+            ~/.local/state/ros/fast_calib/result/debug/edge_cloud.pcd \
+            ~/.local/state/ros/fast_calib/result/debug/center_z0_cloud.pcd
+```
+
+**What to look for:**
+- `filtered_cloud` is empty → filter bounds are wrong (too tight, or entirely miss the target)
+- `filtered_cloud` has thousands of points but `plane_cloud` is small → background clutter is dominating; tighten bounds
+- `plane_cloud` looks good but `edge_cloud` is sparse → normal estimation radius may be too large for your point density
+- `edge_cloud` shows circle shapes but `center_z0_cloud` has wrong count → RANSAC radius limits don't match `circle_radius`
+- `qr_detect.png` shows no axes drawn → ArUco markers not detected; check lighting, image path, marker IDs
+
 ### Calibration fails with no obvious error
 
 Enable debug logging to see per-cluster rejection reasons from the LiDAR detection pipeline:
