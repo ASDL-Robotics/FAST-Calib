@@ -38,6 +38,7 @@ public:
     pcl::PointCloud<Common::Point>::Ptr cloud_input_;
     cv::Mat img_input_;
     LiDARType lidar_type_{LiDARType::Unknown};
+    bool ok_{false};
     LiDARType lidarType() const { return lidar_type_; }
 
     DataPreprocess(Params &params)
