@@ -505,6 +505,7 @@ public:
         RCLCPP_INFO(node_->get_logger(),
             "[LiDAR] Circle fitting complete: %zu/%zu clusters accepted as circles.",
             center_z0_cloud_->size(), cluster_indices.size());
+    }
 
     // Accessors for intermediate result clouds
     pcl::PointCloud<Common::Point>::Ptr getFilteredCloud() const { return filtered_cloud_; }
