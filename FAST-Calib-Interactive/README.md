@@ -206,7 +206,7 @@ At debug level you will see a line for every edge cluster explaining why it was 
 
 | Symptom | Likely cause | Fix |
 |---------|-------------|-----|
-| All clusters rejected — RANSAC no circle | Filter bounds too wide, too few edge points on holes | Tighten `filter` bounds in `sensors.yaml` |
+| All clusters rejected — RANSAC no circle | Clusters are non-circular edges (walls, board frame, noise) | Tighten `filter` bounds to exclude background structure |
 | Clusters rejected — radius error too high | `circle_radius` param doesn't match physical target | Measure and update `circle_radius` in `sensors.yaml` |
-| 0 clusters found | Edge extraction failed (empty plane cloud) | Check `x/y/z_min/max` — VoxelGrid overflows if bounds span > ~5 m |
+| 0 clusters found | Edge extraction failed (empty plane cloud), or VoxelGrid overflowed | Tighten `filter` bounds — if they span > ~5 m the VoxelGrid overflows and returns an empty cloud |
 | Fewer than 4 circles accepted | Partial occlusion or target too far | Move target closer, ensure all 4 holes are in LiDAR FOV |
