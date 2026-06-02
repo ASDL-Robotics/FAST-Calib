@@ -70,12 +70,14 @@ class InteractiveSession:
         sensor_config: SensorConfig,
         output_path: Path,
         state_path: Path,
+        log_level: str | None = None,
     ):
         self.sensor_config = sensor_config
         self.workflow = WorkflowManager(
             sensor_config=sensor_config,
             state_path=state_path,
             output_path=output_path,
+            log_level=log_level,
         )
 
     # --- menu actions -----------------------------------------------------
@@ -268,6 +270,17 @@ def main(argv: list[str] | None = None) -> int:
             'Defaults to $XDG_STATE_HOME/ros/fast_calib.'
         ),
     )
+    parser.add_argument(
+        '--log-level',
+        default=None,
+        metavar='LEVEL',
+        help=(
+            'Log level passed to the fast_calib node '
+            '(e.g. debug, info, warn). '
+            'Use "debug" to see per-cluster rejection reasons. '
+            'Default: ros default (info).'
+        ),
+    )
     args = parser.parse_args(argv)
 
     state_path = args.state if args.state is not None else _xdg_state_dir()
@@ -287,7 +300,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f'Failed to load sensors.yaml: {exc}', file=sys.stderr)
         return 1
 
-    session = InteractiveSession(sensor_config, output_path, state_path)
+    session = InteractiveSession(sensor_config, output_path, state_path,
+                                 log_level=args.log_level)
     session.run()
     return 0
 

@@ -55,6 +55,7 @@ class WorkflowManager:
     state_path: Path
     output_path: Path
     scenes: List[PairScene] = field(default_factory=list)
+    log_level: Optional[str] = None
 
     def __post_init__(self) -> None:
         self.state_path = Path(self.state_path)
@@ -121,13 +122,13 @@ class WorkflowManager:
     def run_single_scene(self, scene: PairScene) -> bool:
         """Run single-scene calibration for one camera-LiDAR pair."""
         cfg_path = self._build_config(scene)
-        rc = self._run(
-            [
-                'ros2', 'run', 'fast_calib', 'fast_calib',
-                '--ros-args', '--params-file', str(cfg_path),
-            ],
-            timeout=self.CALIBRATION_TIMEOUT,
-        )
+        cmd = [
+            'ros2', 'run', 'fast_calib', 'fast_calib',
+            '--ros-args', '--params-file', str(cfg_path),
+        ]
+        if self.log_level:
+            cmd += ['--log-level', self.log_level]
+        rc = self._run(cmd, timeout=self.CALIBRATION_TIMEOUT)
         return rc == 0
 
     def run_multi_scene(self, camera: CameraConfig) -> bool:
@@ -164,13 +165,13 @@ class WorkflowManager:
             node_name=_MULTI_NODE,
         )
 
-        rc = self._run(
-            [
-                'ros2', 'run', 'fast_calib', 'multi_fast_calib',
-                '--ros-args', '--params-file', str(save_path),
-            ],
-            timeout=self.CALIBRATION_TIMEOUT,
-        )
+        cmd = [
+            'ros2', 'run', 'fast_calib', 'multi_fast_calib',
+            '--ros-args', '--params-file', str(save_path),
+        ]
+        if self.log_level:
+            cmd += ['--log-level', self.log_level]
+        rc = self._run(cmd, timeout=self.CALIBRATION_TIMEOUT)
         return rc == 0
 
     # --- inter-camera transforms ------------------------------------------

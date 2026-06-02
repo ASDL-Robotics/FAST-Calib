@@ -26,6 +26,7 @@ On first run, if no `sensors.yaml` is found, the wizard walks you through creati
 | `--sensors` | `$XDG_CONFIG_HOME/ros/fast_calib/sensors.yaml` | Sensor suite config. Created interactively if missing. |
 | `--output` | `$XDG_STATE_HOME/ros/fast_calib/result` | Directory for final calibration results. |
 | `--state` | `$XDG_STATE_HOME/ros/fast_calib` | Directory for transient working data (bags, images, generated configs). |
+| `--log-level` | ros default (info) | Log level passed to the `fast_calib` node (e.g. `debug`, `info`, `warn`). Use `debug` to see per-cluster rejection reasons. |
 
 ## First-run wizard
 
@@ -180,9 +181,13 @@ calibrated. Results are saved to `<output>/inter_camera/`.
 Enable debug logging to see per-cluster rejection reasons from the LiDAR detection pipeline:
 
 ```bash
+# When running directly:
 ros2 run fast_calib fast_calib \
   --ros-args --params-file /path/to/params.yaml \
   --log-level debug
+
+# When using fast_calib_interactive:
+ros2 run fast_calib_interactive interactive_calib --log-level debug
 ```
 
 Or to enable debug only for the calibration node without flooding other components:
