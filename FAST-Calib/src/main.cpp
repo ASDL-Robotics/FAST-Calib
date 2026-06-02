@@ -83,9 +83,10 @@ int main(int argc, char **argv)
     pcl::PointCloud<pcl::PointXYZ>::Ptr aligned_lidar_centers(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr colored_cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
 
-    // Helper: publish debug state for duration_sec then exit with rc
+    // Helper: publish debug state for duration_sec then exit with rc.
+    // Only publishes when params.debug is true (set via 'debug: true' in qr_params.yaml).
     auto exit_with_debug = [&](int rc, double duration_sec) -> int {
-        if (DEBUG) {
+        if (params.debug) {
             std::string label = (rc == 0) ? "success" : "FAILURE";
             RCLCPP_INFO(node->get_logger(),
                 "[Main] Publishing debug clouds for %.0f s (%s). "

@@ -27,6 +27,7 @@ On first run, if no `sensors.yaml` is found, the wizard walks you through creati
 | `--output` | `$XDG_STATE_HOME/ros/fast_calib/result` | Directory for final calibration results. |
 | `--state` | `$XDG_STATE_HOME/ros/fast_calib` | Directory for transient working data (bags, images, generated configs). |
 | `--log-level` | ros default (info) | Log level passed to the `fast_calib` node (e.g. `debug`, `info`, `warn`). Use `debug` to see per-cluster rejection reasons. |
+| `--debug` | off | Enable debug cloud publishing. After calibration (or on failure) the node publishes intermediate point clouds on RViz topics for 30–60 s. |
 
 ## First-run wizard
 

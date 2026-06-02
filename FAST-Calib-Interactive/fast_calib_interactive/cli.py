@@ -71,6 +71,7 @@ class InteractiveSession:
         output_path: Path,
         state_path: Path,
         log_level: str | None = None,
+        debug: bool = False,
     ):
         self.sensor_config = sensor_config
         self.workflow = WorkflowManager(
@@ -78,7 +79,71 @@ class InteractiveSession:
             state_path=state_path,
             output_path=output_path,
             log_level=log_level,
+            debug=debug,
         )
+        self._load_existing_scenes(state_path)
+
+    def _load_existing_scenes(self, state_path: Path) -> None:
+        """Scan the state directory for previously collected scenes and reload them."""
+        scenes_root = state_path / 'scenes'
+        if not scenes_root.is_dir():
+            return
+
+        loaded = 0
+        known_cameras = {c.name for c in self.sensor_config.cameras}
+
+        for scene_dir in sorted(scenes_root.iterdir()):
+            if not scene_dir.is_dir():
+                continue
+            scene_name = scene_dir.name
+
+            for cam_dir in sorted(scene_dir.iterdir()):
+                if not cam_dir.is_dir():
+                    continue
+                camera_name = cam_dir.name
+                if camera_name not in known_cameras:
+                    continue
+
+                image_path = cam_dir / 'image.png'
+                # Bag is stored under the lidar name, not the camera name.
+                # Find it by looking for the lidar associated with this camera.
+                camera = next(
+                    c for c in self.sensor_config.cameras if c.name == camera_name
+                )
+                lidar = self.sensor_config.lidar_for(camera)
+                bag_path = scene_dir / lidar.name / 'lidar_bag'
+
+                if not image_path.is_file() or not bag_path.is_dir():
+                    continue
+
+                # Recover intrinsics from a previously generated config if available.
+                configs_dir = state_path / 'configs'
+                cfg_path = configs_dir / f'{scene_name}_{camera_name}_params.yaml'
+                intrinsics: dict = {}
+                if cfg_path.is_file():
+                    try:
+                        import yaml as _yaml
+                        raw = _yaml.safe_load(cfg_path.read_text()) or {}
+                        node_data = next(iter(raw.values()), {})
+                        p = node_data.get('ros__parameters', {})
+                        intrinsics = {
+                            k: p[k] for k in ('fx', 'fy', 'cx', 'cy', 'k1', 'k2', 'p1', 'p2')
+                            if k in p
+                        }
+                    except Exception:
+                        pass
+
+                self.workflow.add_scene(PairScene(
+                    scene_name=scene_name,
+                    camera_name=camera_name,
+                    bag=str(bag_path),
+                    image=str(image_path),
+                    intrinsics=intrinsics,
+                ))
+                loaded += 1
+
+        if loaded:
+            print(f'  Loaded {loaded} previously collected scene(s) from {scenes_root}')
 
     # --- menu actions -----------------------------------------------------
 
@@ -281,6 +346,16 @@ def main(argv: list[str] | None = None) -> int:
             'Default: ros default (info).'
         ),
     )
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        default=False,
+        help=(
+            'Enable debug cloud publishing. After calibration (or on failure) '
+            'the node will publish intermediate point clouds on RViz topics '
+            'for 30–60 seconds so you can inspect the pipeline state.'
+        ),
+    )
     args = parser.parse_args(argv)
 
     state_path = args.state if args.state is not None else _xdg_state_dir()
@@ -301,7 +376,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     session = InteractiveSession(sensor_config, output_path, state_path,
-                                 log_level=args.log_level)
+                                 log_level=args.log_level,
+                                 debug=args.debug)
     session.run()
     return 0
 

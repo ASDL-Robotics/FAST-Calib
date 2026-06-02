@@ -39,7 +39,7 @@ using namespace cv;
 using namespace pcl;
 
 #define TARGET_NUM_CIRCLES 4
-#define DEBUG 1
+#define DEBUG 0
 #define GEOMETRY_TOLERANCE 0.08
 
 // ===== Custom point type: XYZ + ring =====
@@ -70,6 +70,7 @@ struct Params {
   string bag_path;
   string lidar_topic;
   string output_path;
+  bool debug;
 };
 
 // Load parameters using ROS 2 parameter interface
@@ -96,6 +97,7 @@ Params loadParameters(std::shared_ptr<rclcpp::Node> node) {
   node->declare_parameter("bag_path", std::string("/path/to/input.bag"));
   node->declare_parameter("lidar_topic", std::string("/livox/lidar"));
   node->declare_parameter("output_path", std::string("/path/to/output"));
+  node->declare_parameter("debug", false);
   node->declare_parameter("x_min", 1.5);
   node->declare_parameter("x_max", 3.0);
   node->declare_parameter("y_min", -1.5);
@@ -124,6 +126,7 @@ Params loadParameters(std::shared_ptr<rclcpp::Node> node) {
     params.bag_path = node->get_parameter("bag_path").as_string();
     params.lidar_topic = node->get_parameter("lidar_topic").as_string();
     params.output_path = node->get_parameter("output_path").as_string();
+    params.debug = node->get_parameter("debug").as_bool();
     params.x_min = node->get_parameter("x_min").as_double();
     params.x_max = node->get_parameter("x_max").as_double();
     params.y_min = node->get_parameter("y_min").as_double();
@@ -350,8 +353,33 @@ void saveCalibrationResults(const Params& params, const Eigen::Matrix4f& transfo
     outFile << "Pcl: [";
     outFile << std::setw(10) << transformation(0, 3) << ", " << std::setw(10) << transformation(1, 3) << ", " << std::setw(10) << transformation(2, 3) << "]\n";
 
+    // Euler angles (XYZ convention, radians and degrees)
+    Eigen::Matrix3f R = transformation.block<3,3>(0,0);
+    Eigen::Vector3f euler_rad = R.eulerAngles(0, 1, 2); // roll, pitch, yaw (XYZ)
+    outFile << std::fixed << std::setprecision(6);
+    outFile << "\n# Euler XYZ (radians):  roll=" << euler_rad(0)
+            << "  pitch=" << euler_rad(1)
+            << "  yaw=" << euler_rad(2) << "\n";
+    outFile << "# Euler XYZ (degrees):  roll=" << std::setprecision(4) << euler_rad(0) * 180.0 / M_PI
+            << "  pitch=" << euler_rad(1) * 180.0 / M_PI
+            << "  yaw=" << euler_rad(2) * 180.0 / M_PI << "\n";
+    outFile << "# Translation (m):      x=" << std::setprecision(6) << transformation(0, 3)
+            << "  y=" << transformation(1, 3)
+            << "  z=" << transformation(2, 3) << "\n";
+
     outFile.close();
     std::cout << BOLDYELLOW << "[Result] Single-scene calibration results saved to " << BOLDWHITE << outputDir << "calib_result.txt" << RESET << std::endl;
+    // Echo Euler summary to stdout for quick inspection
+    Eigen::Matrix3f R_print = transformation.block<3,3>(0,0);
+    Eigen::Vector3f euler_print = R_print.eulerAngles(0, 1, 2);
+    std::cout << BOLDYELLOW << "[Result] Euler XYZ (deg): "
+              << BOLDCYAN << "roll=" << std::fixed << std::setprecision(2) << euler_print(0) * 180.0 / M_PI
+              << "  pitch=" << euler_print(1) * 180.0 / M_PI
+              << "  yaw=" << euler_print(2) * 180.0 / M_PI << RESET << std::endl;
+    std::cout << BOLDYELLOW << "[Result] Translation (m): "
+              << BOLDCYAN << "x=" << std::setprecision(4) << transformation(0, 3)
+              << "  y=" << transformation(1, 3)
+              << "  z=" << transformation(2, 3) << RESET << std::endl;
   } 
   else
   {

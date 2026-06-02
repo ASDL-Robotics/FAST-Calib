@@ -100,6 +100,7 @@ class ConfigManager:
         lidar_topic: str,
         save_path: str | Path,
         filter_bounds: Optional[Dict[str, float]] = None,
+        debug: bool = False,
         node_name: str = _SINGLE_NODE,
     ) -> 'ConfigManager':
         """Construct a ConfigManager from live intrinsics and target geometry.
@@ -150,6 +151,8 @@ class ConfigManager:
             'image_path': image_path,
             'output_path': output_path,
             'lidar_topic': lidar_topic,
+            # Debug cloud publishing
+            'debug': debug,
             # Distance filter
             **bounds,
         }

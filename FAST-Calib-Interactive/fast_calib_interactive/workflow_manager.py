@@ -56,6 +56,7 @@ class WorkflowManager:
     output_path: Path
     scenes: List[PairScene] = field(default_factory=list)
     log_level: Optional[str] = None
+    debug: bool = False
 
     def __post_init__(self) -> None:
         self.state_path = Path(self.state_path)
@@ -94,6 +95,7 @@ class WorkflowManager:
             lidar_topic=lidar.topic,
             save_path=save_path,
             filter_bounds=self.sensor_config.filter.as_dict(),
+            debug=self.debug,
         )
         return cfg.config_path
 
@@ -163,6 +165,7 @@ class WorkflowManager:
             lidar_topic=lidar.topic,
             save_path=save_path,
             filter_bounds=self.sensor_config.filter.as_dict(),
+            debug=self.debug,
             node_name=_MULTI_NODE,
         )
 
