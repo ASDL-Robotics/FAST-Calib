@@ -1,0 +1,9 @@
+# Default topic and collection settings for the interactive CLI.
+# These are convenience defaults for data collection only; all calibration
+# parameters still live in the fast_calib package's qr_params.yaml.
+fast_calib_interactive:
+  ros__parameters:
+    lidar_topic: "/livox/lidar"     # e.g. /ouster/points, /livox/lidar
+    image_topic: "/camera/image_raw"
+    num_lidar_msgs: 10              # LiDAR frames to record per scene
+    collection_timeout_sec: 30.0    # Abort a scene if not complete in time
