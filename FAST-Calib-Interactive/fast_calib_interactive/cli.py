@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 
 from .data_collector import CameraArtifacts, collect_lidar_group
+from .dataset_publisher import publish_dataset
 from .sensor_config import SensorConfig
 from .sensors_wizard import run_wizard
 from .workflow_manager import PairScene, WorkflowManager
@@ -268,6 +269,60 @@ class InteractiveSession:
             print(f'\n  {key}:')
             print(T)
 
+    def replay_dataset(self) -> None:
+        """Select a collected dataset and publish it on debug topics."""
+        if not self.workflow.scenes:
+            print('No scenes collected yet. Collect at least one scene first.')
+            return
+
+        # Group scenes by scene name to present as datasets.
+        by_scene: dict = {}
+        for s in self.workflow.scenes:
+            by_scene.setdefault(s.scene_name, []).append(s)
+
+        scene_names = list(by_scene.keys())
+        print('\nAvailable datasets:')
+        for i, name in enumerate(scene_names, 1):
+            pairs = by_scene[name]
+            cameras = ', '.join(p.camera_name for p in pairs)
+            print(f'  {i}. {name}  (cameras: {cameras})')
+
+        choice = _prompt('Select dataset number', '1')
+        try:
+            idx = int(choice) - 1
+            if idx < 0 or idx >= len(scene_names):
+                raise ValueError()
+        except ValueError:
+            print('Invalid selection.')
+            return
+
+        selected_name = scene_names[idx]
+        pairs = by_scene[selected_name]
+
+        duration = float(_prompt('Publish duration (sec)', '30'))
+        rate = float(_prompt('Publish rate Hz', '10'))
+
+        # Find the bag path — all cameras in a scene share the same LiDAR bag.
+        bag_path = pairs[0].bag
+
+        # Gather image paths for all cameras in this scene.
+        image_paths = []
+        for pair in pairs:
+            if pair.image and Path(pair.image).is_file():
+                image_paths.append((pair.camera_name, pair.image))
+
+        print(f"\n  Publishing '{selected_name}' on /fast_calib/debug/{selected_name}/...")
+        print(f'  Duration: {duration}s | Rate: {rate} Hz')
+        print('  Press Ctrl+C to stop early.\n')
+
+        publish_dataset(
+            dataset_name=selected_name,
+            bag_path=bag_path,
+            image_paths=image_paths,
+            duration_sec=duration,
+            rate_hz=rate,
+        )
+
     # --- loop -------------------------------------------------------------
 
     def run(self) -> None:
@@ -285,14 +340,15 @@ class InteractiveSession:
             '3': ('Run single-scene calibration (last scene)', self.calibrate_single),
             '4': ('Run multi-scene calibration', self.calibrate_multi),
             '5': ('Compute inter-camera transforms', self.compute_inter_camera),
-            '6': ('Exit', None),
+            '6': ('Replay dataset on debug topics', self.replay_dataset),
+            '7': ('Exit', None),
         }
         while True:
             print('\nMenu:')
             for key, (label, _) in actions.items():
                 print(f'  {key}. {label}')
             choice = input('Select an option: ').strip()
-            if choice == '6':
+            if choice == '7':
                 print('Goodbye.')
                 return
             entry = actions.get(choice)
