@@ -1,8 +1,9 @@
 """Interactive wizard for creating a sensors.yaml from scratch.
 
 Invoked automatically by the CLI when no sensors.yaml is found at the
-specified path. Guides the user through defining cameras, LiDARs, and
-calibration target geometry, then writes the file to disk.
+specified path. Guides the user through defining cameras, LiDARs,
+calibration target geometry, and distance filter bounds, then writes the
+file to disk.
 """
 
 from __future__ import annotations
@@ -25,6 +26,15 @@ _TARGET_DEFAULTS: Dict[str, Any] = {
     'delta_height_circles': 0.3,
     'circle_radius': 0.10,
     'min_detected_markers': 3,
+}
+
+_FILTER_DEFAULTS: Dict[str, float] = {
+    'x_min': 0.5,
+    'x_max': 3.0,
+    'y_min': -1.5,
+    'y_max': 1.5,
+    'z_min': -1.5,
+    'z_max': 1.5,
 }
 
 
@@ -152,6 +162,20 @@ def _collect_target() -> Dict[str, Any]:
     }
 
 
+def _collect_filter() -> Dict[str, float]:
+    print('\n--- Distance Filter ---')
+    print('Passthrough filter bounds to crop the point cloud around the')
+    print('calibration target. Press Enter to accept defaults.')
+    return {
+        'x_min': _prompt_float('x_min (m)', _FILTER_DEFAULTS['x_min']),
+        'x_max': _prompt_float('x_max (m)', _FILTER_DEFAULTS['x_max']),
+        'y_min': _prompt_float('y_min (m)', _FILTER_DEFAULTS['y_min']),
+        'y_max': _prompt_float('y_max (m)', _FILTER_DEFAULTS['y_max']),
+        'z_min': _prompt_float('z_min (m)', _FILTER_DEFAULTS['z_min']),
+        'z_max': _prompt_float('z_max (m)', _FILTER_DEFAULTS['z_max']),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -170,6 +194,7 @@ def run_wizard(output_path: Path) -> Path:
     lidar_names = [l['name'] for l in lidars]
     cameras = _collect_cameras(lidar_names)
     target = _collect_target()
+    filter_bounds = _collect_filter()
 
     data = {
         'sensors': {
@@ -177,6 +202,7 @@ def run_wizard(output_path: Path) -> Path:
             'lidars': lidars,
         },
         'target': target,
+        'filter': filter_bounds,
     }
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
