@@ -1,6 +1,7 @@
 """Replay a collected dataset on namespaced debug topics.
 
-Reads a rosbag2 bag (mcap) and publishes its PointCloud2 messages on
+Reads a rosbag2 bag (mcap), applies the same X/Y/Z passthrough crop used by
+``lidar_detect.hpp``, and publishes the filtered PointCloud2 messages on
 ``/fast_calib/debug/<dataset_name>/pointcloud``. If camera images exist for
 the scene, they are published as well on
 ``/fast_calib/debug/<dataset_name>/<camera_name>/image``.
@@ -12,9 +13,12 @@ how short the original recording was.
 
 from __future__ import annotations
 
+import struct
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
+
+import numpy as np
 
 import rclpy
 from rclpy.node import Node
@@ -24,7 +28,7 @@ from rclpy.qos import (
     QoSProfile,
     ReliabilityPolicy,
 )
-from sensor_msgs.msg import Image, PointCloud2
+from sensor_msgs.msg import Image, PointCloud2, PointField
 
 import rosbag2_py
 from rclpy.serialization import deserialize_message

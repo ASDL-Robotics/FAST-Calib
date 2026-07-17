@@ -319,6 +319,7 @@ class InteractiveSession:
             dataset_name=selected_name,
             bag_path=bag_path,
             image_paths=image_paths,
+            filter_bounds=self.sensor_config.filter.as_dict(),
             duration_sec=duration,
             rate_hz=rate,
         )
