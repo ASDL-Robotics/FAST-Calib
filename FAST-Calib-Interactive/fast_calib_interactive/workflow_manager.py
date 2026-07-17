@@ -6,7 +6,7 @@ automatically for any two cameras that share the same LiDAR.
 
 Path responsibilities
 ---------------------
-state_path  ($XDG_STATE_HOME/ros/fast_calib)
+state_path  ($XDG_STATE_HOME/fast_calib)
     Transient working data:
     - scenes/<scene>/<camera>/lidar_bag/    recorded rosbag2 directories
     - scenes/<scene>/<camera>/image.png     snapshot images

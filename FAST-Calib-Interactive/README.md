@@ -23,9 +23,9 @@ On first run, if no `sensors.yaml` is found, the wizard walks you through creati
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--sensors` | `$XDG_CONFIG_HOME/ros/fast_calib/sensors.yaml` | Sensor suite config. Created interactively if missing. |
-| `--output` | `$XDG_STATE_HOME/ros/fast_calib/result` | Directory for final calibration results. |
-| `--state` | `$XDG_STATE_HOME/ros/fast_calib` | Directory for transient working data (bags, images, generated configs). |
+| `--sensors` | `$XDG_CONFIG_HOME/fast_calib/sensors.yaml` | Sensor suite config. Created interactively if missing. |
+| `--output` | `$XDG_STATE_HOME/fast_calib/result` | Directory for final calibration results. |
+| `--state` | `$XDG_STATE_HOME/fast_calib` | Directory for transient working data (bags, images, generated configs). |
 | `--log-level` | ros default (info) | Log level passed to the `fast_calib` node (e.g. `debug`, `info`, `warn`). Use `debug` to see per-cluster rejection reasons. |
 | `--debug` | off | Enable debug cloud publishing. After calibration (or on failure) the node publishes intermediate point clouds on RViz topics for 30–60 s. |
 
@@ -53,10 +53,10 @@ If `sensors.yaml` is not found at the default or specified path, the wizard prom
   marker_size [0.16]:
   ...
 
-  sensors.yaml written to ~/.config/ros/fast_calib/sensors.yaml
+  sensors.yaml written to ~/.config/fast_calib/sensors.yaml
 ```
 
-The file is saved to `$XDG_CONFIG_HOME/ros/fast_calib/sensors.yaml` and reused on all future runs. Edit it directly to change your sensor configuration.
+The file is saved to `$XDG_CONFIG_HOME/fast_calib/sensors.yaml` and reused on all future runs. Edit it directly to change your sensor configuration.
 
 ## sensors.yaml format
 
@@ -111,10 +111,10 @@ Camera intrinsics are **not** specified here — they are fetched live from each
 ## Directory layout
 
 ```
-$XDG_CONFIG_HOME/ros/fast_calib/
+$XDG_CONFIG_HOME/fast_calib/
 └── sensors.yaml                            ← user config (hand-editable)
 
-$XDG_STATE_HOME/ros/fast_calib/
+$XDG_STATE_HOME/fast_calib/
 ├── scenes/
 │   ├── scene1/
 │   │   ├── lidar_main/
@@ -195,9 +195,9 @@ Every calibration run — successful or failed — writes intermediate point clo
 Load them in RViz2 (`Add → PointCloud2 → From File`) or view with `pcl_viewer`:
 
 ```bash
-pcl_viewer ~/.local/state/ros/fast_calib/result/debug/filtered_cloud.pcd \
-            ~/.local/state/ros/fast_calib/result/debug/edge_cloud.pcd \
-            ~/.local/state/ros/fast_calib/result/debug/center_z0_cloud.pcd
+pcl_viewer ~/.local/state/fast_calib/result/debug/filtered_cloud.pcd \
+            ~/.local/state/fast_calib/result/debug/edge_cloud.pcd \
+            ~/.local/state/fast_calib/result/debug/center_z0_cloud.pcd
 ```
 
 **What to look for:**

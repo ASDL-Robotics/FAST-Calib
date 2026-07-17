@@ -9,7 +9,7 @@ Two usage modes:
    and target geometry from sensors.yaml — no template required.
 
 All generated configs are written into the state directory
-($XDG_STATE_HOME/ros/fast_calib) so they never pollute the source tree.
+($XDG_STATE_HOME/fast_calib) so they never pollute the source tree.
 """
 
 from __future__ import annotations
@@ -122,7 +122,7 @@ class ConfigManager:
             LiDAR topic name as recorded in the bag.
         save_path:
             Where to write the generated qr_params.yaml (should be under
-            $XDG_STATE_HOME/ros/fast_calib/configs/).
+            $XDG_STATE_HOME/fast_calib/configs/).
         filter_bounds:
             Optional dict with x_min/x_max/y_min/y_max/z_min/z_max.
             Defaults to a wide passthrough if omitted.

@@ -5,7 +5,7 @@ lives in the ``fast_calib`` C++ package, which this CLI invokes unchanged.
 
 Directory layout
 ----------------
-$XDG_STATE_HOME/ros/fast_calib/
+$XDG_STATE_HOME/fast_calib/
     scenes/<scene>/<camera>/lidar_bag/      recorded rosbag2 directories
     scenes/<scene>/<camera>/image.png       snapshot images
     configs/<scene>_<camera>_params.yaml    generated qr_params (state, not config)
@@ -39,21 +39,21 @@ BANNER = r"""
 
 
 def _xdg_state_dir() -> Path:
-    """Return $XDG_STATE_HOME/ros/fast_calib, creating it if needed."""
+    """Return $XDG_STATE_HOME/fast_calib, creating it if needed."""
     xdg_state = Path(
         os.environ.get('XDG_STATE_HOME', Path.home() / '.local' / 'state')
     )
-    state_dir = xdg_state / 'ros' / 'fast_calib'
+    state_dir = xdg_state / 'fast_calib'
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir
 
 
 def _xdg_config_sensors() -> Path:
-    """Return $XDG_CONFIG_HOME/ros/fast_calib/sensors.yaml."""
+    """Return $XDG_CONFIG_HOME/fast_calib/sensors.yaml."""
     xdg_config = Path(
         os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')
     )
-    return xdg_config / 'ros' / 'fast_calib' / 'sensors.yaml'
+    return xdg_config / 'fast_calib' / 'sensors.yaml'
 
 
 def _prompt(prompt: str, default: str | None = None) -> str:
@@ -316,7 +316,7 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=_xdg_config_sensors(),
         help='Path to sensors.yaml '
-             '(default: $XDG_CONFIG_HOME/ros/fast_calib/sensors.yaml). '
+             '(default: $XDG_CONFIG_HOME/fast_calib/sensors.yaml). '
              'Created interactively if not found.',
     )
     parser.add_argument(
@@ -324,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         help='Directory for final calibration results '
-             '(default: $XDG_STATE_HOME/ros/fast_calib/result).',
+             '(default: $XDG_STATE_HOME/fast_calib/result).',
     )
     parser.add_argument(
         '--state',
@@ -332,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=(
             'Directory for transient working data: bags, images, generated configs. '
-            'Defaults to $XDG_STATE_HOME/ros/fast_calib.'
+            'Defaults to $XDG_STATE_HOME/fast_calib.'
         ),
     )
     parser.add_argument(
