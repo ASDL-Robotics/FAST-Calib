@@ -18,8 +18,6 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
-import numpy as np
-
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import (
@@ -51,6 +49,69 @@ _TOPIC_PREFIX = '/fast_calib/debug'
 
 
 # ---------------------------------------------------------------------------
+# Point cloud filtering
+# ---------------------------------------------------------------------------
+
+def _find_xyz_offsets(fields: List[PointField]) -> tuple:
+    """Return (x_offset, y_offset, z_offset) from PointCloud2 fields."""
+    offsets = {}
+    for f in fields:
+        if f.name in ('x', 'y', 'z'):
+            offsets[f.name] = f.offset
+    return offsets['x'], offsets['y'], offsets['z']
+
+
+def _filter_pointcloud(
+    msg: PointCloud2,
+    bounds: Dict[str, float],
+) -> PointCloud2:
+    """Apply an X/Y/Z passthrough filter to a PointCloud2 message.
+
+    Mirrors the PCL PassThrough filter chain in lidar_detect.hpp.
+    Operates on the raw byte buffer so no PCL dependency is needed.
+    """
+    x_off, y_off, z_off = _find_xyz_offsets(msg.fields)
+    point_step = msg.point_step
+    data = bytes(msg.data)
+    num_points = msg.width * msg.height
+
+    x_min = bounds.get('x_min', -float('inf'))
+    x_max = bounds.get('x_max', float('inf'))
+    y_min = bounds.get('y_min', -float('inf'))
+    y_max = bounds.get('y_max', float('inf'))
+    z_min = bounds.get('z_min', -float('inf'))
+    z_max = bounds.get('z_max', float('inf'))
+
+    kept = bytearray()
+    kept_count = 0
+
+    for i in range(num_points):
+        offset = i * point_step
+        x = struct.unpack_from('<f', data, offset + x_off)[0]
+        y = struct.unpack_from('<f', data, offset + y_off)[0]
+        z = struct.unpack_from('<f', data, offset + z_off)[0]
+
+        if (x_min <= x <= x_max
+                and y_min <= y <= y_max
+                and z_min <= z <= z_max):
+            kept.extend(data[offset:offset + point_step])
+            kept_count += 1
+
+    # Build a new PointCloud2 with the filtered points.
+    filtered = PointCloud2()
+    filtered.header = msg.header
+    filtered.height = 1
+    filtered.width = kept_count
+    filtered.fields = msg.fields
+    filtered.is_bigendian = msg.is_bigendian
+    filtered.point_step = point_step
+    filtered.row_step = kept_count * point_step
+    filtered.data = kept
+    filtered.is_dense = True
+    return filtered
+
+
+# ---------------------------------------------------------------------------
 # Node
 # ---------------------------------------------------------------------------
 
@@ -66,6 +127,10 @@ class DatasetPublisher(Node):
     image_paths:
         Optional list of (camera_name, image_file_path) tuples.
         Each image is published once on a latched topic.
+    filter_bounds:
+        Dict with x_min/x_max/y_min/y_max/z_min/z_max to crop the point
+        cloud (same bounds used by lidar_detect.hpp). If None, publishes
+        unfiltered.
     duration_sec:
         How long to keep publishing (loops the bag). Default 30 s.
     rate_hz:
@@ -77,6 +142,7 @@ class DatasetPublisher(Node):
         dataset_name: str,
         bag_path: Path,
         image_paths: Optional[List[tuple[str, Path]]] = None,
+        filter_bounds: Optional[Dict[str, float]] = None,
         duration_sec: float = 30.0,
         rate_hz: float = 10.0,
     ):
@@ -84,6 +150,7 @@ class DatasetPublisher(Node):
         self.dataset_name = dataset_name
         self.bag_path = Path(bag_path)
         self.image_paths = image_paths or []
+        self.filter_bounds = filter_bounds
         self.duration_sec = duration_sec
         self.rate_hz = rate_hz
 
@@ -102,10 +169,20 @@ class DatasetPublisher(Node):
         # Publish images (latched via TRANSIENT_LOCAL).
         self._publish_images()
 
+        filter_info = 'none (raw cloud)'
+        if self.filter_bounds:
+            b = self.filter_bounds
+            filter_info = (
+                f'x=[{b.get("x_min", "")}, {b.get("x_max", "")}] '
+                f'y=[{b.get("y_min", "")}, {b.get("y_max", "")}] '
+                f'z=[{b.get("z_min", "")}, {b.get("z_max", "")}]'
+            )
+
         self.get_logger().info(
             f'Dataset publisher ready:\n'
             f'  topic     : {self._cloud_topic}\n'
             f'  messages  : {len(self._cloud_msgs)} point clouds\n'
+            f'  filter    : {filter_info}\n'
             f'  images    : {len(self.image_paths)}\n'
             f'  duration  : {self.duration_sec}s @ {self.rate_hz} Hz'
         )
@@ -135,6 +212,8 @@ class DatasetPublisher(Node):
             topic_name, data, _timestamp = reader.read_next()
             if topic_name in pc_topics:
                 msg = deserialize_message(data, PointCloud2)
+                if self.filter_bounds:
+                    msg = _filter_pointcloud(msg, self.filter_bounds)
                 self._cloud_msgs.append(msg)
 
     # --- image publishing -------------------------------------------------
@@ -207,6 +286,7 @@ def publish_dataset(
     dataset_name: str,
     bag_path: str | Path,
     image_paths: Optional[List[tuple[str, str | Path]]] = None,
+    filter_bounds: Optional[Dict[str, float]] = None,
     duration_sec: float = 30.0,
     rate_hz: float = 10.0,
 ) -> bool:
@@ -220,6 +300,9 @@ def publish_dataset(
         Path to the rosbag2 bag directory.
     image_paths:
         Optional list of (camera_name, image_file_path) tuples.
+    filter_bounds:
+        Dict with x_min/x_max/y_min/y_max/z_min/z_max for the passthrough
+        crop. If None, publishes the raw (unfiltered) cloud.
     duration_sec:
         How long to publish (loops the bag). Default 30 s.
     rate_hz:
@@ -242,6 +325,7 @@ def publish_dataset(
         dataset_name=dataset_name,
         bag_path=Path(bag_path),
         image_paths=normalized_images,
+        filter_bounds=filter_bounds,
         duration_sec=duration_sec,
         rate_hz=rate_hz,
     )
