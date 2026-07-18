@@ -26,8 +26,8 @@ static void publishDebugClouds(
     const pcl::PointCloud<pcl::PointXYZRGB>::Ptr& colored_cloud,
     double duration_sec)
 {
-    auto colored_cloud_pub = node->create_publisher<sensor_msgs::msg::PointCloud2>("colored_cloud", 1);
-    auto aligned_lidar_centers_pub = node->create_publisher<sensor_msgs::msg::PointCloud2>("aligned_lidar_centers", 1);
+    auto colored_cloud_pub = node->create_publisher<sensor_msgs::msg::PointCloud2>("/fast_calib/debug/colored_cloud", 1);
+    auto aligned_lidar_centers_pub = node->create_publisher<sensor_msgs::msg::PointCloud2>("/fast_calib/debug/aligned_lidar_centers", 1);
 
     rclcpp::Rate rate(1);
     auto deadline = node->get_clock()->now() + rclcpp::Duration::from_seconds(duration_sec);
@@ -86,19 +86,16 @@ int main(int argc, char **argv)
     // Helper: publish debug state for duration_sec then exit with rc.
     // Only publishes when params.debug is true (set via 'debug: true' in qr_params.yaml).
     auto exit_with_debug = [&](int rc, double duration_sec) -> int {
-        if (params.debug) {
-            std::string label = (rc == 0) ? "success" : "FAILURE";
-            RCLCPP_INFO(node->get_logger(),
-                "[Main] Publishing debug clouds for %.0f s (%s). "
-                "Subscribe in RViz: /filtered_cloud /plane_cloud /edge_cloud "
-                "/aligned_cloud /center_z0_cloud /center_cloud /qr_cloud. "
-                "Press Ctrl-C to exit sooner.",
-                duration_sec, label.c_str());
-            publishDebugClouds(node, lidarDetectPtr, qrDetectPtr,
-                               qr_center_cloud, lidar_center_cloud,
-                               aligned_lidar_centers, colored_cloud,
-                               duration_sec);
-        }
+        std::string label = (rc == 0) ? "success" : "FAILURE";
+        RCLCPP_INFO(node->get_logger(),
+            "[Main] Publishing debug clouds for %.0f s (%s). "
+            "Subscribe in RViz: /fast_calib/debug/* topics. "
+            "Press Ctrl-C to exit sooner.",
+            duration_sec, label.c_str());
+        publishDebugClouds(node, lidarDetectPtr, qrDetectPtr,
+                           qr_center_cloud, lidar_center_cloud,
+                           aligned_lidar_centers, colored_cloud,
+                           duration_sec);
         rclcpp::shutdown();
         return rc;
     };

@@ -50,7 +50,7 @@ class QRDetect
       // Initialize QR dictionary
       dictionary_ = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_6X6_250);
 
-      qr_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("qr_cloud", 1);
+      qr_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/fast_calib/debug/qr_cloud", 1);
     }
 
     cv::Point2f projectPointDist(cv::Point3f pt_cv, const cv::Mat intrinsics, const cv::Mat distCoeffs) 

@@ -26,6 +26,7 @@
   <depend>rosbag2_cpp</depend>
   <depend>rosbag2_storage</depend>
   <depend>ament_index_cpp</depend>
+  <depend>visualization_msgs</depend>
   <depend>OpenCV</depend>
   <depend>PCL</depend>
 
