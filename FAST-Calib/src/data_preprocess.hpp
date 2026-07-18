@@ -38,6 +38,7 @@ public:
     pcl::PointCloud<Common::Point>::Ptr cloud_input_;
     cv::Mat img_input_;
     LiDARType lidar_type_{LiDARType::Unknown};
+    std::string frame_id_{"map"};
     bool ok_{false};
     LiDARType lidarType() const { return lidar_type_; }
 
@@ -144,6 +145,7 @@ public:
 
                         if (message_count == 0) {
                             lidar_type_ = has_ring ? LiDARType::Mech : LiDARType::Solid;
+                            frame_id_ = pcl_msg.header.frame_id;
                         }
 
                         // Convert to Common::Point preserving ring if available

@@ -23,6 +23,7 @@ private:
     double x_min_, x_max_, y_min_, y_max_, z_min_, z_max_;
     double circle_radius_, delta_width_circles_, delta_height_circles_;
     std::shared_ptr<rclcpp::Node> node_;
+    std::string frame_id_{"map"};
 
     // Intermediate result clouds
     pcl::PointCloud<Common::Point>::Ptr filtered_cloud_;
@@ -67,6 +68,8 @@ public:
         circle_markers_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("/fast_calib/debug/circle_centers", 10);
     }
 
+    void setFrameId(const std::string& frame_id) { frame_id_ = frame_id; }
+
     void publishCircleMarkers(const pcl::PointCloud<pcl::PointXYZ>::Ptr& centers)
     {
         visualization_msgs::msg::MarkerArray marker_array;
@@ -74,14 +77,14 @@ public:
         // Delete all previous markers first
         visualization_msgs::msg::Marker delete_marker;
         delete_marker.action = visualization_msgs::msg::Marker::DELETEALL;
-        delete_marker.header.frame_id = "map";
+        delete_marker.header.frame_id = frame_id_;
         delete_marker.header.stamp = node_->get_clock()->now();
         marker_array.markers.push_back(delete_marker);
 
         for (size_t i = 0; i < centers->size(); ++i)
         {
             visualization_msgs::msg::Marker marker;
-            marker.header.frame_id = "map";
+            marker.header.frame_id = frame_id_;
             marker.header.stamp = node_->get_clock()->now();
             marker.ns = "circle_centers";
             marker.id = static_cast<int>(i + 1);

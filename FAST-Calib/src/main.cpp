@@ -24,6 +24,7 @@ static void publishDebugClouds(
     const pcl::PointCloud<pcl::PointXYZ>::Ptr& lidar_centers,
     const pcl::PointCloud<pcl::PointXYZ>::Ptr& aligned_lidar_centers,
     const pcl::PointCloud<pcl::PointXYZRGB>::Ptr& colored_cloud,
+    const std::string& frame_id,
     double duration_sec)
 {
     auto colored_cloud_pub = node->create_publisher<sensor_msgs::msg::PointCloud2>("/fast_calib/debug/colored_cloud", 1);
@@ -37,7 +38,7 @@ static void publishDebugClouds(
         auto stamp = node->get_clock()->now();
         std_msgs::msg::Header header;
         header.stamp = stamp;
-        header.frame_id = "map";
+        header.frame_id = frame_id;
 
         auto publish = [&](auto pub, auto cloud) {
             if (!cloud || cloud->empty()) return;
@@ -83,23 +84,6 @@ int main(int argc, char **argv)
     pcl::PointCloud<pcl::PointXYZ>::Ptr aligned_lidar_centers(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr colored_cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
 
-    // Helper: publish debug state for duration_sec then exit with rc.
-    // Only publishes when params.debug is true (set via 'debug: true' in qr_params.yaml).
-    auto exit_with_debug = [&](int rc, double duration_sec) -> int {
-        std::string label = (rc == 0) ? "success" : "FAILURE";
-        RCLCPP_INFO(node->get_logger(),
-            "[Main] Publishing debug clouds for %.0f s (%s). "
-            "Subscribe in RViz: /fast_calib/debug/* topics. "
-            "Press Ctrl-C to exit sooner.",
-            duration_sec, label.c_str());
-        publishDebugClouds(node, lidarDetectPtr, qrDetectPtr,
-                           qr_center_cloud, lidar_center_cloud,
-                           aligned_lidar_centers, colored_cloud,
-                           duration_sec);
-        rclcpp::shutdown();
-        return rc;
-    };
-
     DataPreprocessPtr dataPreprocessPtr;
     dataPreprocessPtr.reset(new DataPreprocess(params));
 
@@ -113,6 +97,26 @@ int main(int argc, char **argv)
 
     cv::Mat img_input = dataPreprocessPtr->img_input_;
     pcl::PointCloud<Common::Point>::Ptr cloud_input = dataPreprocessPtr->cloud_input_;
+
+    // Set the frame_id from the bag data for debug visualization.
+    lidarDetectPtr->setFrameId(dataPreprocessPtr->frame_id_);
+
+    // Helper: publish debug state for duration_sec then exit with rc.
+    auto exit_with_debug = [&](int rc, double duration_sec) -> int {
+        std::string label = (rc == 0) ? "success" : "FAILURE";
+        RCLCPP_INFO(node->get_logger(),
+            "[Main] Publishing debug clouds for %.0f s (%s). "
+            "Subscribe in RViz: /fast_calib/debug/* topics. "
+            "Press Ctrl-C to exit sooner.",
+            duration_sec, label.c_str());
+        publishDebugClouds(node, lidarDetectPtr, qrDetectPtr,
+                           qr_center_cloud, lidar_center_cloud,
+                           aligned_lidar_centers, colored_cloud,
+                           dataPreprocessPtr->frame_id_,
+                           duration_sec);
+        rclcpp::shutdown();
+        return rc;
+    };
 
     if (img_input.empty())
     {
