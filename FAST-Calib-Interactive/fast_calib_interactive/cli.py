@@ -311,7 +311,7 @@ class InteractiveSession:
             if pair.image and Path(pair.image).is_file():
                 image_paths.append((pair.camera_name, pair.image))
 
-        print(f"\n  Publishing '{selected_name}' on /fast_calib/debug/{selected_name}/...")
+        print(f"\n  Publishing '{selected_name}' on /fast_calib/debug/...")
         print(f'  Duration: {duration}s | Rate: {rate} Hz')
         print('  Press Ctrl+C to stop early.\n')
 
