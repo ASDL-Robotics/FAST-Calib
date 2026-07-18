@@ -1,3 +1,6 @@
+import os
+from glob import glob
+
 from setuptools import find_packages, setup
 
 package_name = 'fast_calib_interactive'
@@ -10,20 +13,20 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='fishy',
-    maintainer_email='sfish7@gatech.edu',
-    description='TODO: Package description',
-    license='TODO: License declaration',
-    extras_require={
-        'test': [
-            'pytest',
-        ],
-    },
+    maintainer='Chunran Zheng',
+    maintainer_email='zhengcr@connect.hku.hk',
+    description='Interactive CLI for collecting LiDAR-camera data and orchestrating '
+                'FAST-Calib calibration runs.',
+    license='GPL-2.0',
+    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'interactive_calib = fast_calib_interactive.cli:main',
         ],
     },
 )

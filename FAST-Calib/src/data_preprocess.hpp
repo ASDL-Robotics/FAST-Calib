@@ -38,6 +38,8 @@ public:
     pcl::PointCloud<Common::Point>::Ptr cloud_input_;
     cv::Mat img_input_;
     LiDARType lidar_type_{LiDARType::Unknown};
+    std::string frame_id_{"map"};
+    bool ok_{false};
     LiDARType lidarType() const { return lidar_type_; }
 
     DataPreprocess(Params &params)
@@ -73,7 +75,7 @@ public:
         rosbag2_cpp::readers::SequentialReader reader;
         rosbag2_storage::StorageOptions storage_options;
         storage_options.uri = bag_path;
-        storage_options.storage_id = "sqlite3";
+        storage_options.storage_id = "mcap";
 
         rosbag2_cpp::ConverterOptions converter_options;
         converter_options.input_serialization_format = "cdr";
@@ -143,6 +145,7 @@ public:
 
                         if (message_count == 0) {
                             lidar_type_ = has_ring ? LiDARType::Mech : LiDARType::Solid;
+                            frame_id_ = pcl_msg.header.frame_id;
                         }
 
                         // Convert to Common::Point preserving ring if available
@@ -194,6 +197,8 @@ public:
             RCLCPP_WARN(rclcpp::get_logger("data_preprocess"), 
                        "No points loaded! Check your rosbag and topic configuration.");
         }
+
+        ok_ = true;
     }
 };
 

@@ -1,4 +1,4 @@
-# FAST-Calib (ROS 2 Monorepo)
+# FAST-Calib
 
 This repository contains two ROS 2 packages for LiDAR-camera extrinsic calibration.
 
@@ -37,11 +37,7 @@ the `FAST-Calib` executables. Does not reimplement any calibration logic.
 
 ## Build
 
-```bash
-cd ~/Workspaces/fastcal_ws
-colcon build --packages-select fast_calib fast_calib_interactive
-source install/setup.bash
-```
+These packages build as standard ROS 2 ament packages.
 
 ## Quick Start
 
@@ -69,6 +65,5 @@ ros2 run fast_calib_interactive interactive_calib
 
 ## Upstream
 
-Based on [FAST-Calib](https://github.com/xuankuzcr/FAST-Calib) by Chunran Zheng
-(HKU MARS Lab). See the related paper:
+Based on [FAST-Calib](https://github.com/xuankuzcr/FAST-Calib) by Chunran Zheng (HKU MARS Lab). See the related paper:
 [FAST-Calib: LiDAR-Camera Extrinsic Calibration in One Second](https://www.arxiv.org/pdf/2507.17210).

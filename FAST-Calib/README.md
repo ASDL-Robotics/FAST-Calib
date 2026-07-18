@@ -58,6 +58,18 @@ ros2 launch fast_calib multi_calib.launch.py
 6. Calibrate now!
 
 💡 **Note:** You can run `scripts/distance_filter_tool.py` to quickly obtain suitable filter parameters.
+
+### Debugging detection failures
+
+If calibration fails, run with `--log-level debug` to see why each LiDAR edge cluster was accepted or rejected:
+
+```bash
+ros2 run fast_calib fast_calib \
+  --ros-args --params-file config/qr_params.yaml \
+  --log-level mono_qr_pattern:=debug
+```
+
+The log will report per-cluster rejection reasons (no circle found, radius error too high, etc.) and a summary of how many clusters were accepted. See the [FAST-Calib-Interactive README](../FAST-Calib-Interactive/README.md#troubleshooting) for a full troubleshooting guide.
 <p align="center">
   <img src="./pics/calibration_target.jpg" width="100%">
   <font color=#a0a0a0 size=2>Left: Actual calibration target | Right: Technical drawing with annotated dimensions.</font>

@@ -10,6 +10,7 @@ which is included as part of this source code package.
 
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 #include <Eigen/Dense>
 #include <opencv2/opencv.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -22,6 +23,7 @@ private:
     double x_min_, x_max_, y_min_, y_max_, z_min_, z_max_;
     double circle_radius_, delta_width_circles_, delta_height_circles_;
     std::shared_ptr<rclcpp::Node> node_;
+    std::string frame_id_{"map"};
 
     // Intermediate result clouds
     pcl::PointCloud<Common::Point>::Ptr filtered_cloud_;
@@ -37,6 +39,7 @@ public:
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> edge_pub_;
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> center_z0_pub_;
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> center_pub_;
+    std::shared_ptr<rclcpp::Publisher<visualization_msgs::msg::MarkerArray>> circle_markers_pub_;
 
     LidarDetect(std::shared_ptr<rclcpp::Node> node, Params &params)
         : node_(node),
@@ -56,12 +59,54 @@ public:
         delta_width_circles_ = params.delta_width_circles;
         delta_height_circles_ = params.delta_height_circles;
 
-        filtered_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("filtered_cloud", 1);
-        plane_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("plane_cloud", 1);
-        aligned_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("aligned_cloud", 1);
-        edge_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("edge_cloud", 1);
-        center_z0_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("center_z0_cloud", 10);
-        center_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("center_cloud", 10);
+        filtered_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/fast_calib/debug/filtered_cloud", 1);
+        plane_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/fast_calib/debug/plane_cloud", 1);
+        aligned_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/fast_calib/debug/aligned_cloud", 1);
+        edge_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/fast_calib/debug/edge_cloud", 1);
+        center_z0_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/fast_calib/debug/center_z0_cloud", 10);
+        center_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/fast_calib/debug/center_cloud", 10);
+        circle_markers_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("/fast_calib/debug/circle_centers", 10);
+    }
+
+    void setFrameId(const std::string& frame_id) { frame_id_ = frame_id; }
+
+    void publishCircleMarkers(const pcl::PointCloud<pcl::PointXYZ>::Ptr& centers)
+    {
+        visualization_msgs::msg::MarkerArray marker_array;
+
+        // Delete all previous markers first
+        visualization_msgs::msg::Marker delete_marker;
+        delete_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+        delete_marker.header.frame_id = frame_id_;
+        delete_marker.header.stamp = node_->get_clock()->now();
+        marker_array.markers.push_back(delete_marker);
+
+        for (size_t i = 0; i < centers->size(); ++i)
+        {
+            visualization_msgs::msg::Marker marker;
+            marker.header.frame_id = frame_id_;
+            marker.header.stamp = node_->get_clock()->now();
+            marker.ns = "circle_centers";
+            marker.id = static_cast<int>(i + 1);
+            marker.type = visualization_msgs::msg::Marker::SPHERE;
+            marker.action = visualization_msgs::msg::Marker::ADD;
+            marker.pose.position.x = centers->points[i].x;
+            marker.pose.position.y = centers->points[i].y;
+            marker.pose.position.z = centers->points[i].z;
+            marker.pose.orientation.w = 1.0;
+            marker.scale.x = circle_radius_ * 2.0;
+            marker.scale.y = circle_radius_ * 2.0;
+            marker.scale.z = 0.02;
+            marker.color.r = 1.0f;
+            marker.color.g = 0.2f;
+            marker.color.b = 0.0f;
+            marker.color.a = 0.8f;
+            marker.lifetime = rclcpp::Duration(0, 0);
+            marker_array.markers.push_back(marker);
+        }
+
+        circle_markers_pub_->publish(marker_array);
+        RCLCPP_INFO(node_->get_logger(), "[LiDAR] Published %zu circle center markers on /fast_calib/debug/circle_centers", centers->size());
     }
 
     void detect_mech_lidar(pcl::PointCloud<Common::Point>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr center_cloud)
@@ -303,6 +348,8 @@ public:
             center_point_origin.z = original_point.z();
             center_cloud->points.push_back(center_point_origin);
         }
+
+        publishCircleMarkers(center_cloud);
     }
 
     void detect_solid_lidar(pcl::PointCloud<Common::Point>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr center_cloud)
@@ -443,40 +490,70 @@ public:
             seg.setMethodType(pcl::SAC_RANSAC);
             seg.setDistanceThreshold(0.01);
             seg.setMaxIterations(1000);
+            seg.setRadiusLimits(circle_radius_ - 0.03, circle_radius_ + 0.03);
             seg.setInputCloud(cluster);
             seg.segment(*inliers, *coefficients);
     
-            if (inliers->indices.size() > 0) 
+            if (inliers->indices.empty())
             {
-                double error = 0.0;
-                for (const auto& idx : inliers->indices) 
-                {
-                    double dx = cluster->points[idx].x - coefficients->values[0];
-                    double dy = cluster->points[idx].y - coefficients->values[1];
-                    double distance = sqrt(dx * dx + dy * dy) - circle_radius_;
-                    error += abs(distance);
-                }
-                error /= inliers->indices.size();
-    
-                if (error < 0.025) 
-                {
-                    pcl::PointXYZ center_point;
-                    center_point.x = coefficients->values[0];
-                    center_point.y = coefficients->values[1];
-                    center_point.z = 0.0;
-                    center_z0_cloud_->push_back(center_point);
-
-                    Eigen::Vector3d aligned_point(center_point.x, center_point.y, center_point.z + average_z);
-                    Eigen::Vector3d original_point = R_inv * aligned_point;
-
-                    pcl::PointXYZ center_point_origin;
-                    center_point_origin.x = original_point.x();
-                    center_point_origin.y = original_point.y();
-                    center_point_origin.z = original_point.z();
-                    center_cloud->points.push_back(center_point_origin);
-                }
+                RCLCPP_DEBUG(node_->get_logger(),
+                    "[LiDAR] Cluster %zu (%zu pts): RANSAC found no circle within radius "
+                    "limits [%.3f, %.3f] m — skipping.",
+                    i, cluster->size(),
+                    circle_radius_ - 0.03, circle_radius_ + 0.03);
+                continue;
             }
+
+            double fitted_radius = coefficients->values[2];
+            double error = 0.0;
+            for (const auto& idx : inliers->indices) 
+            {
+                double dx = cluster->points[idx].x - coefficients->values[0];
+                double dy = cluster->points[idx].y - coefficients->values[1];
+                double distance = sqrt(dx * dx + dy * dy) - circle_radius_;
+                error += std::abs(distance);
+            }
+            error /= inliers->indices.size();
+
+            if (error >= 0.025)
+            {
+                RCLCPP_DEBUG(node_->get_logger(),
+                    "[LiDAR] Cluster %zu (%zu pts): circle fit rejected — "
+                    "mean radius error %.4f m >= 0.025 m threshold "
+                    "(fitted radius %.3f m, expected %.3f m, center (%.3f, %.3f)).",
+                    i, cluster->size(), error,
+                    fitted_radius, circle_radius_,
+                    coefficients->values[0], coefficients->values[1]);
+                continue;
+            }
+
+            RCLCPP_DEBUG(node_->get_logger(),
+                "[LiDAR] Cluster %zu (%zu pts): circle accepted — "
+                "fitted radius %.3f m, mean error %.4f m, center (%.3f, %.3f).",
+                i, cluster->size(), fitted_radius, error,
+                coefficients->values[0], coefficients->values[1]);
+
+            pcl::PointXYZ center_point;
+            center_point.x = coefficients->values[0];
+            center_point.y = coefficients->values[1];
+            center_point.z = 0.0;
+            center_z0_cloud_->push_back(center_point);
+
+            Eigen::Vector3d aligned_point(center_point.x, center_point.y, center_point.z + average_z);
+            Eigen::Vector3d original_point = R_inv * aligned_point;
+
+            pcl::PointXYZ center_point_origin;
+            center_point_origin.x = original_point.x();
+            center_point_origin.y = original_point.y();
+            center_point_origin.z = original_point.z();
+            center_cloud->points.push_back(center_point_origin);
         }
+
+        RCLCPP_INFO(node_->get_logger(),
+            "[LiDAR] Circle fitting complete: %zu/%zu clusters accepted as circles.",
+            center_z0_cloud_->size(), cluster_indices.size());
+
+        publishCircleMarkers(center_cloud);
     }
 
     // Accessors for intermediate result clouds

@@ -26,6 +26,7 @@ find_package(image_geometry REQUIRED)
 find_package(rosbag2_cpp REQUIRED)
 find_package(rosbag2_storage REQUIRED)
 find_package(ament_index_cpp REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(PCL 1.10 REQUIRED)
 find_package(OpenCV REQUIRED)
 
@@ -59,6 +60,7 @@ ament_target_dependencies(fast_calib
   rosbag2_cpp
   rosbag2_storage
   ament_index_cpp
+  visualization_msgs
 )
 
 target_link_libraries(fast_calib
@@ -85,6 +87,7 @@ ament_target_dependencies(multi_fast_calib
   rosbag2_cpp
   rosbag2_storage
   ament_index_cpp
+  visualization_msgs
 )
 
 target_link_libraries(multi_fast_calib

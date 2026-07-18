@@ -49,24 +49,22 @@ LIVOX_CUSTOM_TYPE = "livox_ros_driver2/msg/CustomMsg"
 def _detect_storage_id(bag_dir):
     """Infer the rosbag2 storage backend from the files in the bag directory."""
     for entry in os.listdir(bag_dir):
-        if entry.endswith(".db3"):
-            return "sqlite3"
         if entry.endswith(".mcap"):
             return "mcap"
-    # Default to sqlite3; rosbag2 will raise a clear error if this is wrong.
-    return "sqlite3"
+        if entry.endswith(".db3"):
+            return "sqlite3"
+    # Default to mcap (Jazzy and later).
+    return "mcap"
 
 
 def _open_reader(bag_dir):
     """Open a rosbag2 SequentialReader on the given bag directory."""
     storage_id = _detect_storage_id(bag_dir)
     reader = rosbag2_py.SequentialReader()
-    storage_options = rosbag2_py.StorageOptions(uri=bag_dir, storage_id=storage_id)
-    converter_options = rosbag2_py.ConverterOptions(
-        input_serialization_format="cdr",
-        output_serialization_format="cdr",
+    reader.open(
+        rosbag2_py.StorageOptions(uri=bag_dir, storage_id=storage_id),
+        rosbag2_py.ConverterOptions('', ''),
     )
-    reader.open(storage_options, converter_options)
     return reader
 
 
